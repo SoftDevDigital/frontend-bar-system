@@ -478,11 +478,20 @@ export async function getTables(): Promise<ApiBaseResponse<Table[]>> {
 
 /* ========== PRODUCTS (MENÚ PÚBLICO) ========== */
 
+
+
+
+
+/* ========== PRODUCTS (MENÚ PÚBLICO) ========== */
+
 export type NutritionalInfo = {
   calories: number;
   protein: number;
   carbs: number;
   fat: number;
+  // opcionales si el backend los usa
+  fiber?: number;
+  sodium?: number;
 };
 
 export type Product = {
@@ -522,6 +531,78 @@ export async function getProducts(params?: {
   });
 
   return (await res.json()) as ApiBaseResponse<Product[]>;
+}
+
+/* ====== CREATE PRODUCT (POST /products) – SOLO ADMIN ====== */
+
+export type CreateProductNutritionalInfo = {
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  sodium: number;
+};
+
+export type CreateProductPayload = {
+  name: string;
+  description?: string;
+  price: number;
+  costPrice?: number;
+  categoryId: string;
+  sku?: string;
+  barcode?: string;
+  status?: string;          // ej: "available"
+  imageUrl?: string;
+  images?: string[];
+  isAvailable?: boolean;
+  preparationTime?: number;
+  calories?: number;
+  allergens?: string[];
+  ingredients?: string[];
+  nutritionalInfo?: CreateProductNutritionalInfo;
+  tags?: string[];
+  isVegan?: boolean;
+  isGlutenFree?: boolean;
+  isSpicy?: boolean;
+  spicyLevel?: number;
+  isPopular?: boolean;
+  discountPercentage?: number;
+  minimumAge?: number;
+};
+
+export type CreateProductResponse = ApiBaseResponse<Product>;
+
+/**
+ * Crea un producto del menú.
+ * POST /api/v1/products
+ *
+ * 👑 SOLO ADMIN
+ * Requiere JWT con rol "admin" (el backend valida el rol).
+ */
+export async function createProduct(
+  payload: CreateProductPayload
+): Promise<CreateProductResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  if (!token) {
+    throw new Error("No hay token. Iniciá sesión como administrador.");
+  }
+
+  const res = await fetch(`${API_BASE_URL}/products`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return (await res.json()) as CreateProductResponse;
 }
 
 /* ========== CREATE TABLE (ADMIN) ========== */
@@ -656,7 +737,12 @@ export async function deleteTable(
 
 /* ========== ORDERS (LISTADO ADMIN/EMPLOYEE) ========== */
 
+
 export type OrderItem = {
+  // 👇 soportamos ambos nombres, según cómo venga del backend
+  id?: string;
+  itemId?: string;
+
   productId: string;
   productName: string;
   quantity: number;
@@ -673,7 +759,6 @@ export type Order = {
   total: number;
   createdAt: string;
 };
-
 /**
  * Obtiene la lista de pedidos con filtros opcionales.
  * Requiere autenticación (admin o employee).
@@ -691,6 +776,8 @@ export async function getOrders(params?: {
   date?: string;
   limit?: number;
   page?: number;
+  orderType?: string;
+  customerId?: string;
 }): Promise<ApiBaseResponse<Order[]>> {
   const searchParams = new URLSearchParams();
 
@@ -708,6 +795,12 @@ export async function getOrders(params?: {
   }
   if (typeof params?.page === "number") {
     searchParams.set("page", String(params.page));
+  }
+  if (params?.orderType) {
+    searchParams.set("orderType", params.orderType);
+  }
+  if (params?.customerId) {
+    searchParams.set("customerId", params.customerId);
   }
 
   const qs = searchParams.toString();
@@ -729,6 +822,203 @@ export async function getOrders(params?: {
 
   return (await res.json()) as ApiBaseResponse<Order[]>;
 }
+
+/* ====== CREATE ORDER (POST /orders) ====== */
+
+export type CreateOrderItemPayload = {
+  productId: string;
+  quantity: number;
+  specialInstructions?: string;
+};
+
+export type CreateOrderPayload = {
+  tableId?: string; // requerido si orderType = "dine_in"
+  customerId?: string;
+  orderType: "dine_in" | "takeaway" | "delivery";
+  items: CreateOrderItemPayload[];
+
+  // Opcionales según swagger
+  waiterId?: string;
+  notes?: string;
+  discountAmount?: number;
+  tipAmount?: number;
+};
+
+export type OrderCreatedData = {
+  id: string;
+  orderNumber: string;
+  subtotal: number;
+  taxAmount: number;
+  totalAmount: number;
+  status: string;
+  // el backend probablemente devuelva más campos, los dejamos flexibles
+  [key: string]: any;
+};
+
+export type CreateOrderResponse =
+  ApiBaseResponse<OrderCreatedData>;
+
+/**
+ * Crea una nueva orden.
+ * POST /api/v1/orders
+ *
+ * Requiere autenticación de admin/employee.
+ * Efecto colateral: si es dine_in y se manda tableId,
+ * el backend marcará la mesa como "occupied".
+ */
+export async function createOrder(
+  payload: CreateOrderPayload
+): Promise<CreateOrderResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  const res = await fetch(`${API_BASE_URL}/orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return (await res.json()) as CreateOrderResponse;
+}
+/**
+ * Obtiene la lista de pedidos con filtros opcionales.
+ * Requiere autenticación (admin o employee).
+ *
+ * params:
+ *  - status?: string        -> ej: "preparing"
+ *  - tableId?: string       -> id de la mesa
+ *  - date?: string          -> "YYYY-MM-DD"
+ *  - limit?: number         -> cantidad por página
+ *  - page?: number          -> número de página
+ */
+
+
+/* ====== UPDATE ORDER ITEMS (PATCH /orders/:id/items) ====== */
+
+export type UpdateOrderItemsPayload = {
+  items: {
+    productId: string;
+    quantity: number; // cantidad FINAL
+  }[];
+};
+
+export type UpdateOrderItemsResponse = ApiBaseResponse<Order>;
+
+/**
+ * Agrega/actualiza items de una orden existente.
+ * PATCH /api/v1/orders/:id/items
+ *
+ * Comportamiento backend:
+ * - Si el producto ya existe en la orden → actualiza la cantidad (valor final).
+ * - Si el producto no existe → lo agrega como nuevo item.
+ */
+export async function updateOrderItems(
+  orderId: string,
+  payload: UpdateOrderItemsPayload
+): Promise<UpdateOrderItemsResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  const res = await fetch(`${API_BASE_URL}/orders/${orderId}/items`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return (await res.json()) as UpdateOrderItemsResponse;
+}
+
+
+/* ====== DELETE ORDER ITEM (DELETE /orders/:id/items/:itemId) ====== */
+
+export async function deleteOrderItem(
+  orderId: string,
+  itemId: string
+): Promise<ApiBaseResponse<Order | null>> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  const res = await fetch(
+    `${API_BASE_URL}/orders/${orderId}/items/${itemId}`,
+    {
+      method: "DELETE",
+      headers: {
+        accept: "*/*",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    }
+  );
+
+  // Puede venir 200 con JSON o 204 sin body → leemos como texto
+  const raw = await res.text();
+
+  if (raw) {
+    try {
+      return JSON.parse(raw) as ApiBaseResponse<Order | null>;
+    } catch {
+      return {
+        success: res.ok,
+        statusCode: res.status,
+        message: raw || "Respuesta no válida del servidor",
+        data: null,
+        timestamp: new Date().toISOString(),
+        executionTime: "",
+      };
+    }
+  }
+
+  // Sin body
+  return {
+    success: res.ok,
+    statusCode: res.status,
+    message: res.ok
+      ? "Item eliminado correctamente de la orden"
+      : "No se pudo eliminar el item de la orden",
+    data: null,
+    timestamp: new Date().toISOString(),
+    executionTime: "",
+  };
+}
+
+
+export async function getOrderById(
+  id: string
+): Promise<ApiBaseResponse<Order>> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  const res = await fetch(`${API_BASE_URL}/orders/${id}`, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  return (await res.json()) as ApiBaseResponse<Order>;
+}
+
+
 
 /* ========== BILLS (LISTADO ADMIN/EMPLOYEE) ========== */
 
@@ -800,6 +1090,192 @@ export async function getBills(params?: {
 
   return (await res.json()) as ApiBaseResponse<Bill[]>;
 }
+
+
+export type PaymentMethod =
+  | "cash"
+  | "credit_card"
+  | "debit_card"
+  | "transfer"
+  | "digital_wallet";
+
+export type Bill = {
+  id: string;
+  orderId: string;
+  tableNumber: number;
+  subtotal: number;
+  tax: number;
+  tip: number;
+  total: number;
+  paymentMethod: string; // "cash" | "card" | etc (según backend)
+  status: string; // "paid" | "pending" | etc
+  createdAt: string;
+};
+
+/** ✅ NUEVO: payload para crear factura (POST /bills) */
+export type CreateBillPayload = {
+  orderId: string;
+  paymentMethod: PaymentMethod;
+  paidAmount: number; // Debe ser >= totalAmount
+  cashierId?: string;
+  discountAmount?: number;
+  tipAmount?: number;
+};
+
+export type BillCreatedData = {
+  id: string;
+  billNumber: string;
+  totalAmount: number;
+  paidAmount: number;
+  changeAmount: number;
+  status: string;
+};
+
+export type CreateBillResponse = ApiBaseResponse<BillCreatedData>;
+
+/**
+ * Crea una factura para una orden existente.
+ * POST /api/v1/bills
+ *
+ * Requiere autenticación (admin/employee).
+ * Efectos backend:
+ *  - Factura creada con todos los items.
+ *  - Movimiento financiero SALE registrado.
+ *  - Orden ELIMINADA.
+ *  - Mesa liberada (status: available).
+ */
+export async function createBill(
+  payload: CreateBillPayload
+): Promise<CreateBillResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  const res = await fetch(`${API_BASE_URL}/bills`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return (await res.json()) as CreateBillResponse;
+}
+
+
+export type DirectSaleItemPayload = {
+  productId: string;
+  quantity: number;
+};
+
+export type CreateDirectSalePayload = {
+  items: DirectSaleItemPayload[];
+  paymentMethod: PaymentMethod;
+  paidAmount: number;
+  customerId?: string;    // Opcional
+  cashierId?: string;     // Opcional
+  discountAmount?: number; // Opcional
+  notes?: string;         // Opcional
+};
+
+export type DirectSaleBillData = {
+  id: string;
+  billNumber: string;
+  orderId: string;      // "DIRECT_SALE"
+  totalAmount: number;
+  status: string;
+  [key: string]: any;   // por si el backend agrega más campos
+};
+
+export type CreateDirectSaleResponse =
+  ApiBaseResponse<DirectSaleBillData>;
+
+/**
+ * Crea una factura de venta directa (sin mesa, sin orden previa).
+ * POST /api/v1/bills/direct-sale
+ *
+ * Requiere autenticación (admin/employee).
+ * Ideal para takeaway / venta rápida.
+ */
+export async function createDirectSaleBill(
+  payload: CreateDirectSalePayload
+): Promise<CreateDirectSaleResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  const res = await fetch(`${API_BASE_URL}/bills/direct-sale`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return (await res.json()) as CreateDirectSaleResponse;
+}
+
+/* ========== BILL TICKET (GET /bills/:id/ticket) ========== */
+
+export type BillTicketProduct = {
+  nombre: string;
+  cantidad: number;
+  precioUnitario: number;
+  total: number;
+};
+
+export type BillTicket = {
+  billNumber: string;
+  fecha: string;        // ISO string
+  tipoVenta: string;    // ej: "Mesa 5", "Delivery", etc.
+  mesa?: number;
+  cliente: string;      // "Juan Pérez" o "Consumidor Final"
+  productos: BillTicketProduct[];
+  subtotal: number;
+  impuestos: number;
+  total: number;
+  metodoPago: string;   // "cash", "credit_card", etc.
+  montoPagado: number;
+  cambio: number;
+};
+
+export type GetBillTicketResponse = ApiBaseResponse<BillTicket>;
+
+/**
+ * Obtiene la información del ticket de una factura.
+ * GET /api/v1/bills/:id/ticket
+ *
+ * Requiere autenticación (admin/employee).
+ */
+export async function getBillTicket(
+  id: string
+): Promise<GetBillTicketResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  const res = await fetch(`${API_BASE_URL}/bills/${id}/ticket`, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  return (await res.json()) as GetBillTicketResponse;
+}
+
+
 
 /* ========== INVENTORY (LISTADO + CREATE ADMIN/EMPLOYEE) ========== */
 
@@ -1273,9 +1749,13 @@ export async function getReservations(params?: {
   if (params?.status) {
     searchParams.set("status", params.status);
   }
+
+  // ⬅️ CAMBIO IMPORTANTE:
+  // el backend filtra por reservationDate, no por "date"
   if (params?.date) {
-    searchParams.set("date", params.date);
+    searchParams.set("reservationDate", params.date);
   }
+
   if (params?.customerId) {
     searchParams.set("customerId", params.customerId);
   }
@@ -1294,7 +1774,6 @@ export async function getReservations(params?: {
     ? `${API_BASE_URL}/reservations?${qs}`
     : `${API_BASE_URL}/reservations`;
 
-  // token admin/employee (igual que en orders/bills)
   let token: string | null = null;
   if (typeof window !== "undefined") {
     token = localStorage.getItem("festgo_token");
@@ -1303,7 +1782,7 @@ export async function getReservations(params?: {
   const res = await fetch(url, {
     method: "GET",
     headers: {
-      accept: "*/*", // igual que el curl de Swagger
+      accept: "*/*",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
@@ -1394,11 +1873,17 @@ export type UpdateReservationPayload = Partial<{
   internalNotes: string[];
   tags: string[];
   actualSpend: number;
+  tableId: string;          // 👈 NUEVO: para mover de mesa
 }>;
 
 export type UpdateReservationResponse =
   ApiBaseResponse<ReservationDetailEnvelope>;
 
+/**
+ * PATCH /reservations/{id}
+ * Uso interno (admin/employee) para actualizar campos de la reserva
+ * (fecha, hora, partySize, tableId, etc.)
+ */
 export async function updateReservation(
   id: string,
   payload: UpdateReservationPayload
@@ -1422,6 +1907,47 @@ export async function updateReservation(
       "Content-Type": "application/json",
       accept: "*/*",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(cleanPayload),
+  });
+
+  return (await res.json()) as UpdateReservationResponse;
+}
+
+/**
+ * ✅ NUEVO:
+ * PATCH /reservations?code=ABC123&action=update
+ * Endpoint PÚBLICO: actualizar por código de confirmación.
+ */
+export type UpdateReservationByCodePayload = Partial<{
+  reservationDate: string;
+  reservationTime: string;
+  partySize: number;
+  tableId: string;
+}>;
+
+export async function updateReservationByCode(
+  code: string,
+  payload: UpdateReservationByCodePayload
+): Promise<UpdateReservationResponse> {
+  const searchParams = new URLSearchParams();
+  searchParams.set("code", code);
+  searchParams.set("action", "update");
+
+  const cleanPayload: any = {};
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === "string" && value.trim() === "") return;
+    cleanPayload[key] = value;
+  });
+
+  const url = `${API_BASE_URL}/reservations?${searchParams.toString()}`;
+
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "*/*", // público -> SIN Authorization
     },
     body: JSON.stringify(cleanPayload),
   });
@@ -1484,11 +2010,23 @@ export async function updateReservationStatus(
 /* ========== RESERVATIONS (CREAR RESERVA PÚBLICA) ========== */
 
 export type CreateReservationPayload = {
-  partySize: number; // 1–20
-  reservationDate: string; // "YYYY-MM-DD"
-  reservationTime: string; // "HH:mm"
-  notes?: string;
-  tableId?: string; // opcional, si en algún momento querés fijar mesa
+  // 🔹 Requeridos
+  partySize: number;          // 1–20
+  reservationDate: string;    // "YYYY-MM-DD"
+  reservationTime: string;    // "HH:mm"
+
+  // 🔹 Opcional (vos la mandás solo si hay datos)
+  customerDetails?: ReservationCustomerDetails;
+
+  // Opcionales según backend
+  customerId?: string;
+  tableId?: string;
+  tableNumber?: number;
+  duration?: number;
+  preferredSeatingArea?: string;
+  specialRequests?: string[];
+  allergies?: string[];
+  dietaryRestrictions?: string[];
 };
 
 export type ReservationCreatedData = {
@@ -1512,15 +2050,8 @@ export type ReservationCreatedData = {
   updatedBy: string;
 };
 
-export type CreateReservationEnvelope = {
-  success: boolean;
-  message: string;
-  data: ReservationCreatedData;
-};
-
 export type CreateReservationResponse =
-  ApiBaseResponse<CreateReservationEnvelope>;
-
+  ApiBaseResponse<ReservationCreatedData>;
 /**
  * Crea una nueva reserva verificando disponibilidad automáticamente.
  * POST /reservations
@@ -1591,12 +2122,18 @@ export async function deleteReservation(
 export async function getReservationByCode(
   code: string
 ): Promise<GetReservationByIdResponse> {
-  const url = `${API_BASE_URL}/reservations/code/${encodeURIComponent(code)}`;
+  // Endpoint público:
+  // GET /api/v1/reservations?code=ABC123
+  const searchParams = new URLSearchParams();
+  searchParams.set("code", code);
+
+  const url = `${API_BASE_URL}/reservations?${searchParams.toString()}`;
 
   const res = await fetch(url, {
     method: "GET",
     headers: {
-      accept: "*/*", // igual que el curl de Swagger
+      accept: "*/*", // igual que en Swagger
+      // ⚠️ IMPORTANTE: SIN Authorization -> público
     },
   });
 
@@ -2144,3 +2681,58 @@ export async function getTopMovingItems(params?: {
 
   return (await res.json()) as ApiBaseResponse<TopMovingItem[]>;
 }
+
+
+/* ========== RESERVATIONS AVAILABILITY (VER DISPONIBILIDAD) ========== */
+
+export type ReservationAvailabilityTable = {
+  id: string;
+  number: number;
+  capacity: number;
+  availableTimeSlots: string[]; // ["08:00", "20:00", "21:00"]
+};
+
+export type ReservationAvailabilityEnvelope = {
+  tables: ReservationAvailabilityTable[];
+};
+
+export type GetReservationAvailabilityResponse =
+  ApiBaseResponse<ReservationAvailabilityEnvelope>;
+
+/**
+ * Ver disponibilidad de mesas para una fecha y tamaño de grupo.
+ * GET /reservations/availability/:date?partySize=4&duration=120
+ */
+export async function getReservationAvailability(params: {
+  date: string; // "YYYY-MM-DD"
+  partySize: number; // 1–20
+  duration?: number; // minutos (default backend: 120)
+}): Promise<GetReservationAvailabilityResponse> {
+  const { date, partySize, duration } = params;
+
+  const url = new URL(
+    `${API_BASE_URL}/reservations/availability/${date}`
+  );
+  url.searchParams.set("partySize", String(partySize));
+  if (typeof duration === "number") {
+    url.searchParams.set("duration", String(duration));
+  }
+
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+    },
+  });
+
+  return (await res.json()) as GetReservationAvailabilityResponse;
+}
+
+
+export type ReservationCustomerDetails = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email?: string;
+};
+

@@ -128,6 +128,14 @@ export default function TopNav() {
                 <span style={{ cursor: "pointer" }}>Inventario</span>
               </Link>
 
+              {/* 👇 NUEVO: link para ver/administrar productos */}
+              <Link
+                href="/products"
+                style={{ textDecoration: "none", color: "inherit" }}
+              >
+                <span style={{ cursor: "pointer" }}>Productos</span>
+              </Link>
+
               <Link
                 href="/orders"
                 style={{ textDecoration: "none", color: "inherit" }}

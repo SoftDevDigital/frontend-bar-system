@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import {
   getReservations,
   getReservationById,
-  updateReservationStatus, // 👈 USAMOS ESTE
+  updateReservationStatus,
   deleteReservation,
   getReservationByCode,
   type Reservation,
@@ -13,6 +13,10 @@ import {
   type CreateReservationPayload,
   type ReservationStatus,
   type ReservationStatusAction,
+  getReservationAvailability,
+  type ReservationAvailabilityTable,
+  updateReservation, // 👈 PATCH /reservations/{id}
+  type UpdateReservationPayload, // 👈 tipo para PATCH
 } from "@/app/lib/api";
 
 const STATUS_OPTIONS = [
@@ -25,13 +29,10 @@ const STATUS_OPTIONS = [
   { value: "no-show", label: "No-show" },
 ];
 
-// opciones sin "Todos" para selects editables
 const STATUS_OPTIONS_NO_ALL = STATUS_OPTIONS.filter((opt) => opt.value);
 
-// 👇 NUEVO: tipo para el rol del usuario
 type UserRole = "admin" | "employee" | "customer" | string | null;
 
-// tipo para la vista de detalle
 type ReservationDetailView = {
   id: string;
   status: ReservationStatus;
@@ -60,7 +61,6 @@ export default function ReservationsPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // 👇 NUEVO: rol + flag de que ya chequeamos auth
   const [role, setRole] = useState<UserRole>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -76,17 +76,30 @@ export default function ReservationsPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState<string>("");
-  const [createForm, setCreateForm] = useState<CreateReservationPayload>({
-    partySize: 2,
+  const [createForm, setCreateForm] = useState({
     reservationDate: "",
     reservationTime: "",
+    partySize: 2,
     notes: "",
+    firstName: "",
+    lastName: "",
+    phone: "",
+    email: "",
   });
-
   const createDateRef = useRef<HTMLInputElement | null>(null);
   const filterDateRef = useRef<HTMLInputElement | null>(null);
 
-  // estado para detalle
+  // === NUEVO: estado para "Ver disponibilidad" ===
+  const [availabilityDate, setAvailabilityDate] = useState<string>("");
+  const [availabilityPartySize, setAvailabilityPartySize] = useState<number>(2);
+  const [availabilityDuration, setAvailabilityDuration] = useState<string>(""); // en minutos (opcional)
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState("");
+  const [availabilityTables, setAvailabilityTables] = useState<
+    ReservationAvailabilityTable[]
+  >([]);
+
+  // detalle
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string>("");
@@ -94,7 +107,13 @@ export default function ReservationsPage() {
     null
   );
 
-  // edición y PATCH
+  // edición de campos básicos (fecha, hora, personas, mesa)
+  const [editReservationDate, setEditReservationDate] = useState<string>("");
+  const [editReservationTime, setEditReservationTime] = useState<string>("");
+  const [editPartySize, setEditPartySize] = useState<string>("");
+  const [editTableId, setEditTableId] = useState<string>("");
+
+  // edición y PATCH de estado/gasto/motivo
   const [editStatus, setEditStatus] = useState<ReservationStatus | "">("");
   const [editActualSpend, setEditActualSpend] = useState<string>("");
   const [cancelReason, setCancelReason] = useState<string>("");
@@ -110,7 +129,7 @@ export default function ReservationsPage() {
   const [searchCode, setSearchCode] = useState("");
   const [searchCodeLoading, setSearchCodeLoading] = useState(false);
 
-  // 👇 NUEVO: leer el usuario de localStorage y detectar rol
+  // leer usuario(localStorage) para rol
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -162,15 +181,15 @@ export default function ReservationsPage() {
 
       if (statusFilter) params.status = statusFilter;
       if (dateFilter) params.date = dateFilter;
-      if (targetPage && targetPage > 1) {
-        params.page = targetPage;
-      }
+
+      // siempre mandamos page y limit para que el backend pagine bien
+      params.page = targetPage || 1;
+      params.limit = limit;
 
       const res = await getReservations(params);
 
       if (res.success && res.data) {
         const listData = res.data.data;
-
         const apiItems = (listData.data || []) as any[];
 
         const mapped: Reservation[] = apiItems.map((item) => {
@@ -233,6 +252,73 @@ export default function ReservationsPage() {
     fetchReservations(1);
   };
 
+  // === NUEVO: handler para Ver Disponibilidad ===
+  const handleCheckAvailability = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAvailabilityError("");
+    setAvailabilityTables([]);
+
+    if (!availabilityDate) {
+      setAvailabilityError("Seleccioná una fecha para ver la disponibilidad.");
+      return;
+    }
+
+    if (availabilityPartySize < 1 || availabilityPartySize > 20) {
+      setAvailabilityError("La cantidad de personas debe ser entre 1 y 20.");
+      return;
+    }
+
+    setAvailabilityLoading(true);
+    try {
+      const res = await getReservationAvailability({
+        date: availabilityDate,
+        partySize: availabilityPartySize,
+        duration: availabilityDuration
+          ? Number(availabilityDuration)
+          : undefined,
+      });
+
+      if (res.success && res.data) {
+        const tables = res.data.tables || [];
+        setAvailabilityTables(tables);
+
+        if (!tables.length) {
+          setAvailabilityError(
+            "No hay mesas disponibles para esos parámetros."
+          );
+        }
+      } else {
+        setAvailabilityError(
+          res.message || "No se pudo obtener la disponibilidad."
+        );
+      }
+    } catch (err: any) {
+      setAvailabilityError(
+        err?.message || "Error inesperado al consultar disponibilidad."
+      );
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  };
+
+  // usar un horario de disponibilidad para rellenar el form de creación
+  const handleUseSlotForCreate = (
+    table: ReservationAvailabilityTable,
+    time: string
+  ) => {
+    setCreateForm((prev) => ({
+      ...prev,
+      reservationDate: availabilityDate || prev.reservationDate,
+      reservationTime: time,
+      partySize: availabilityPartySize,
+    }));
+
+    setCreateSuccess(
+      `Horario ${time} seleccionado para la mesa ${table.number}. Completá la reserva abajo.`
+    );
+    setCreateError("");
+  };
+
   // buscar reserva por código
   const handleSearchByCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -281,7 +367,8 @@ export default function ReservationsPage() {
             ? raw.internalNotes
             : [],
           tags: Array.isArray(raw.tags) ? raw.tags : [],
-          actualSpend: typeof raw.actualSpend === "number" ? raw.actualSpend : 0,
+          actualSpend:
+            typeof raw.actualSpend === "number" ? raw.actualSpend : 0,
           createdAt: raw.createdAt,
           updatedAt: raw.updatedAt,
           tableId: raw.tableId,
@@ -289,6 +376,12 @@ export default function ReservationsPage() {
         };
 
         setDetailData(view);
+        // setear valores para edición básica
+        setEditReservationDate(view.reservationDate || "");
+        setEditReservationTime(view.reservationTime || "");
+        setEditPartySize(String(view.partySize ?? ""));
+        setEditTableId(view.tableId ?? "");
+        // setear valores para edición de estado
         setEditStatus(view.status);
         setEditActualSpend(
           view.actualSpend && view.actualSpend > 0
@@ -303,7 +396,8 @@ export default function ReservationsPage() {
       }
     } catch (err: any) {
       setDetailError(
-        err?.message || "Error inesperado al buscar por código de confirmación."
+        err?.message ||
+          "Error inesperado al buscar por código de confirmación."
       );
     } finally {
       setDetailLoading(false);
@@ -328,17 +422,36 @@ export default function ReservationsPage() {
     setCreateSuccess("");
 
     try {
+      const trimmedFirstName = createForm.firstName.trim();
+      const trimmedLastName = createForm.lastName.trim();
+      const trimmedPhone = createForm.phone.trim();
+      const trimmedEmail = createForm.email.trim();
+
+      const hasCustomerDetails =
+        trimmedFirstName || trimmedLastName || trimmedPhone || trimmedEmail;
+
       const payload: CreateReservationPayload = {
         partySize: Number(createForm.partySize),
         reservationDate: createForm.reservationDate,
         reservationTime: createForm.reservationTime,
         notes: createForm.notes?.trim() || undefined,
+        ...(hasCustomerDetails
+          ? {
+              customerDetails: {
+                firstName: trimmedFirstName || undefined,
+                lastName: trimmedLastName || undefined,
+                phone: trimmedPhone || undefined,
+                email: trimmedEmail || undefined,
+              },
+            }
+          : {}),
       };
 
       const res = await createReservation(payload);
 
       if (res.success && res.data) {
-        const created = res.data.data;
+        const created = res.data;
+
         setCreateSuccess(
           `Reserva creada. Código de confirmación: ${created.confirmationCode}`
         );
@@ -350,10 +463,14 @@ export default function ReservationsPage() {
         fetchReservations(1);
 
         setCreateForm((prev) => ({
+          ...prev,
           partySize: 2,
-          reservationDate: prev.reservationDate,
           reservationTime: "",
           notes: "",
+          firstName: "",
+          lastName: "",
+          phone: "",
+          email: "",
         }));
       } else {
         setCreateError(
@@ -361,13 +478,14 @@ export default function ReservationsPage() {
         );
       }
     } catch (err: any) {
-      setCreateError(err.message || "Error inesperado al crear la reserva");
+      setCreateError(
+        err?.message || "Error inesperado al crear la reserva."
+      );
     } finally {
       setCreating(false);
     }
   };
 
-  // abrir modal y traer detalle
   const handleViewDetails = async (reservationId: string) => {
     setDetailOpen(true);
     setDetailLoading(true);
@@ -410,7 +528,8 @@ export default function ReservationsPage() {
             ? raw.internalNotes
             : [],
           tags: Array.isArray(raw.tags) ? raw.tags : [],
-          actualSpend: typeof raw.actualSpend === "number" ? raw.actualSpend : 0,
+          actualSpend:
+            typeof raw.actualSpend === "number" ? raw.actualSpend : 0,
           createdAt: raw.createdAt,
           updatedAt: raw.updatedAt,
           tableId: raw.tableId,
@@ -418,6 +537,12 @@ export default function ReservationsPage() {
         };
 
         setDetailData(view);
+        // edición básica
+        setEditReservationDate(view.reservationDate || "");
+        setEditReservationTime(view.reservationTime || "");
+        setEditPartySize(String(view.partySize ?? ""));
+        setEditTableId(view.tableId ?? "");
+        // edición de estado
         setEditStatus(view.status);
         setEditActualSpend(
           view.actualSpend && view.actualSpend > 0
@@ -439,7 +564,6 @@ export default function ReservationsPage() {
     }
   };
 
-  // mapea status -> action del endpoint
   const mapStatusToAction = (
     status: ReservationStatus
   ): ReservationStatusAction | null => {
@@ -459,7 +583,117 @@ export default function ReservationsPage() {
     }
   };
 
-  // PATCH /reservations/{id}/status?action=...
+  // === NUEVO: PATCH /reservations/{id} para editar fecha/hora/personas/mesa ===
+  const handlePatchReservationBasics = async () => {
+    if (!detailData) return;
+
+    setUpdating(true);
+    setUpdateError("");
+    setUpdateSuccess("");
+
+    try {
+      const payload: UpdateReservationPayload = {};
+
+      if (
+        editReservationDate &&
+        editReservationDate !== detailData.reservationDate
+      ) {
+        payload.reservationDate = editReservationDate;
+      }
+
+      if (
+        editReservationTime &&
+        editReservationTime !== detailData.reservationTime
+      ) {
+        payload.reservationTime = editReservationTime;
+      }
+
+      if (editPartySize) {
+        const n = Number(editPartySize);
+        if (Number.isNaN(n) || n < 1 || n > 20) {
+          setUpdateError(
+            "La cantidad de personas debe ser un número entre 1 y 20."
+          );
+          setUpdating(false);
+          return;
+        }
+        if (n !== detailData.partySize) {
+          payload.partySize = n;
+        }
+      }
+
+      if (editTableId !== (detailData.tableId ?? "")) {
+        // si backend acepta null para liberar mesa, podrías mandar null cuando string vacío
+        payload.tableId = editTableId || undefined;
+      }
+
+      if (Object.keys(payload).length === 0) {
+        setUpdateError("No hay cambios para guardar en los datos básicos.");
+        setUpdating(false);
+        return;
+      }
+
+      const res = await updateReservation(detailData.id, payload);
+
+      if (res.success && res.data) {
+        const raw = res.data.data as any;
+        const customerDetails = raw.customerDetails || {};
+
+        const view: ReservationDetailView = {
+          id: raw.reservationId,
+          status: raw.status as ReservationStatus,
+          reservationDate: raw.reservationDate,
+          reservationTime: raw.reservationTime,
+          partySize: raw.partySize,
+          confirmationCode: raw.confirmationCode,
+          customerName:
+            customerDetails.firstName || customerDetails.lastName
+              ? `${customerDetails.firstName ?? ""} ${
+                  customerDetails.lastName ?? ""
+                }`.trim()
+              : undefined,
+          customerEmail: customerDetails.email,
+          customerPhone: customerDetails.phone,
+          specialRequests: Array.isArray(raw.specialRequests)
+            ? raw.specialRequests
+            : [],
+          dietaryRestrictions: Array.isArray(raw.dietaryRestrictions)
+            ? raw.dietaryRestrictions
+            : [],
+          allergies: Array.isArray(raw.allergies) ? raw.allergies : [],
+          internalNotes: Array.isArray(raw.internalNotes)
+            ? raw.internalNotes
+            : [],
+          tags: Array.isArray(raw.tags) ? raw.tags : [],
+          actualSpend:
+            typeof raw.actualSpend === "number" ? raw.actualSpend : 0,
+          createdAt: raw.createdAt,
+          updatedAt: raw.updatedAt,
+          tableId: raw.tableId,
+          tableNumber: raw.tableNumber,
+        };
+
+        setDetailData(view);
+        setEditReservationDate(view.reservationDate || "");
+        setEditReservationTime(view.reservationTime || "");
+        setEditPartySize(String(view.partySize ?? ""));
+        setEditTableId(view.tableId ?? "");
+        setUpdateSuccess("Datos básicos de la reserva actualizados.");
+        fetchReservations(page);
+      } else {
+        setUpdateError(
+          res.message || "No se pudo actualizar la reserva (PATCH)."
+        );
+      }
+    } catch (err: any) {
+      setUpdateError(
+        err?.message || "Error inesperado al actualizar la reserva (PATCH)."
+      );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const handleUpdateReservation = async () => {
     if (!detailData) return;
 
@@ -560,7 +794,8 @@ export default function ReservationsPage() {
         fetchReservations(page);
       } else {
         setUpdateError(
-          res.message || "No se pudo actualizar la reserva. Intentalo nuevamente."
+          res.message ||
+            "No se pudo actualizar la reserva. Intentalo nuevamente."
         );
       }
     } catch (err: any) {
@@ -572,7 +807,6 @@ export default function ReservationsPage() {
     }
   };
 
-  // DELETE /reservations/{id}
   const handleDeleteReservation = async (reservationId: string) => {
     if (typeof window !== "undefined") {
       const confirmDelete = window.confirm(
@@ -632,9 +866,11 @@ export default function ReservationsPage() {
     setEditStatus("");
     setEditActualSpend("");
     setCancelReason("");
+    setEditReservationDate("");
+    setEditReservationTime("");
+    setEditPartySize("");
+    setEditTableId("");
   };
-
-  // 👇 NUEVO: guard de acceso según rol
 
   if (!authChecked) {
     return (
@@ -691,6 +927,196 @@ export default function ReservationsPage() {
           {deleteError}
         </p>
       )}
+
+      {/* === NUEVO: VER DISPONIBILIDAD === */}
+      <section
+        style={{
+          background: "#020617",
+          padding: "1rem",
+          borderRadius: "0.75rem",
+          marginBottom: "1.5rem",
+          border: "1px solid #1f2937",
+        }}
+      >
+        <h2 style={{ fontSize: "1.1rem", marginBottom: "0.75rem" }}>
+          Ver disponibilidad de mesas
+        </h2>
+
+        {availabilityError && (
+          <p style={{ color: "#f87171", marginBottom: "0.5rem" }}>
+            {availabilityError}
+          </p>
+        )}
+
+        <form
+          onSubmit={handleCheckAvailability}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
+            gap: "0.75rem",
+            alignItems: "flex-end",
+            marginBottom: "0.75rem",
+          }}
+        >
+          {/* Fecha */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <label style={{ marginBottom: "0.25rem", fontSize: "0.85rem" }}>
+              Fecha
+            </label>
+            <input
+              type="date"
+              value={availabilityDate}
+              onChange={(e) => setAvailabilityDate(e.target.value)}
+              onClick={openNativePicker}
+              required
+              style={{
+                padding: "0.45rem 0.6rem",
+                borderRadius: "0.5rem",
+                border: "1px solid #475569",
+                background: "#020617",
+                color: "white",
+              }}
+            />
+          </div>
+
+          {/* Personas */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <label style={{ marginBottom: "0.25rem", fontSize: "0.85rem" }}>
+              Personas
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={availabilityPartySize}
+              onChange={(e) =>
+                setAvailabilityPartySize(Number(e.target.value))
+              }
+              required
+              style={{
+                padding: "0.45rem 0.6rem",
+                borderRadius: "0.5rem",
+                border: "1px solid #475569",
+                background: "#020617",
+                color: "white",
+              }}
+            />
+          </div>
+
+          {/* Duración (opcional) */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <label style={{ marginBottom: "0.25rem", fontSize: "0.85rem" }}>
+              Duración (minutos, opcional)
+            </label>
+            <input
+              type="number"
+              min={30}
+              step={30}
+              value={availabilityDuration}
+              onChange={(e) => setAvailabilityDuration(e.target.value)}
+              placeholder="120"
+              style={{
+                padding: "0.45rem 0.6rem",
+                borderRadius: "0.5rem",
+                border: "1px solid #475569",
+                background: "#020617",
+                color: "white",
+              }}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={availabilityLoading}
+            style={{
+              padding: "0.7rem 1.2rem",
+              background: "#3b82f6",
+              borderRadius: "0.6rem",
+              border: "none",
+              fontWeight: "bold",
+              cursor: availabilityLoading ? "default" : "pointer",
+              marginTop: "0.4rem",
+            }}
+          >
+            {availabilityLoading ? "Consultando..." : "Ver disponibilidad"}
+          </button>
+        </form>
+
+        {availabilityTables.length > 0 && (
+          <div
+            style={{
+              marginTop: "0.5rem",
+              borderRadius: "0.75rem",
+              border: "1px solid #1f2937",
+              overflowX: "auto",
+            }}
+          >
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "0.85rem",
+              }}
+            >
+              <thead>
+                <tr style={{ background: "#111827" }}>
+                  <th style={{ padding: "0.5rem", textAlign: "left" }}>
+                    Mesa
+                  </th>
+                  <th style={{ padding: "0.5rem", textAlign: "left" }}>
+                    Capacidad
+                  </th>
+                  <th style={{ padding: "0.5rem", textAlign: "left" }}>
+                    Horarios disponibles
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {availabilityTables.map((t) => (
+                  <tr key={t.id} style={{ borderTop: "1px solid #1f2937" }}>
+                    <td style={{ padding: "0.5rem" }}>Mesa {t.number}</td>
+                    <td style={{ padding: "0.5rem" }}>{t.capacity}</td>
+                    <td
+                      style={{
+                        padding: "0.5rem",
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "0.35rem",
+                      }}
+                    >
+                      {t.availableTimeSlots.length === 0 && "—"}
+                      {t.availableTimeSlots.map((slot) => (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => handleUseSlotForCreate(t, slot)}
+                          style={{
+                            padding: "0.25rem 0.6rem",
+                            borderRadius: "999px",
+                            border: "1px solid #4b5563",
+                            background: "#020617",
+                            color: "#e5e7eb",
+                            fontSize: "0.75rem",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {slot}
+                        </button>
+                      ))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {availabilityLoading && (
+          <p style={{ marginTop: "0.5rem", color: "#9ca3af" }}>
+            Consultando disponibilidad…
+          </p>
+        )}
+      </section>
 
       {/* CREAR RESERVA */}
       <section
@@ -795,6 +1221,106 @@ export default function ReservationsPage() {
                 }))
               }
               required
+              style={{
+                padding: "0.45rem 0.6rem",
+                borderRadius: "0.5rem",
+                border: "1px solid #475569",
+                background: "#020617",
+                color: "white",
+              }}
+            />
+          </div>
+
+          {/* Nombre */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <label style={{ marginBottom: "0.25rem", fontSize: "0.85rem" }}>
+              Nombre
+            </label>
+            <input
+              type="text"
+              value={createForm.firstName}
+              onChange={(e) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  firstName: e.target.value,
+                }))
+              }
+              placeholder="Ana"
+              style={{
+                padding: "0.45rem 0.6rem",
+                borderRadius: "0.5rem",
+                border: "1px solid #475569",
+                background: "#020617",
+                color: "white",
+              }}
+            />
+          </div>
+
+          {/* Apellido */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <label style={{ marginBottom: "0.25rem", fontSize: "0.85rem" }}>
+              Apellido
+            </label>
+            <input
+              type="text"
+              value={createForm.lastName}
+              onChange={(e) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  lastName: e.target.value,
+                }))
+              }
+              placeholder="Pérez"
+              style={{
+                padding: "0.45rem 0.6rem",
+                borderRadius: "0.5rem",
+                border: "1px solid #475569",
+                background: "#020617",
+                color: "white",
+              }}
+            />
+          </div>
+
+          {/* Teléfono */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <label style={{ marginBottom: "0.25rem", fontSize: "0.85rem" }}>
+              Teléfono
+            </label>
+            <input
+              type="tel"
+              value={createForm.phone}
+              onChange={(e) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  phone: e.target.value,
+                }))
+              }
+              placeholder="+54 9 341 555 1234"
+              style={{
+                padding: "0.45rem 0.6rem",
+                borderRadius: "0.5rem",
+                border: "1px solid #475569",
+                background: "#020617",
+                color: "white",
+              }}
+            />
+          </div>
+
+          {/* Email */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <label style={{ marginBottom: "0.25rem", fontSize: "0.85rem" }}>
+              Email
+            </label>
+            <input
+              type="email"
+              value={createForm.email}
+              onChange={(e) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  email: e.target.value,
+                }))
+              }
+              placeholder="cliente@ejemplo.com"
               style={{
                 padding: "0.45rem 0.6rem",
                 borderRadius: "0.5rem",
@@ -1358,6 +1884,184 @@ export default function ReservationsPage() {
                   </div>
                 </div>
 
+                {/* === NUEVO BLOQUE: edición básica (PATCH /reservations/{id}) === */}
+                <div
+                  style={{
+                    borderTop: "1px solid #1f2937",
+                    paddingTop: "0.75rem",
+                    marginTop: "0.25rem",
+                    marginBottom: "0.5rem",
+                  }}
+                >
+                  <h4
+                    style={{
+                      fontSize: "0.95rem",
+                      marginBottom: "0.5rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Editar datos básicos (endpoint PATCH)
+                  </h4>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
+                      gap: "0.5rem",
+                      marginBottom: "0.6rem",
+                    }}
+                  >
+                    {/* Fecha */}
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      <label
+                        style={{
+                          fontSize: "0.8rem",
+                          marginBottom: "0.15rem",
+                        }}
+                      >
+                        Fecha
+                      </label>
+                      <input
+                        type="date"
+                        value={editReservationDate}
+                        onChange={(e) =>
+                          setEditReservationDate(e.target.value)
+                        }
+                        onClick={openNativePicker}
+                        style={{
+                          padding: "0.35rem 0.55rem",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #475569",
+                          background: "#020617",
+                          color: "white",
+                          fontSize: "0.85rem",
+                        }}
+                      />
+                    </div>
+
+                    {/* Hora */}
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      <label
+                        style={{
+                          fontSize: "0.8rem",
+                          marginBottom: "0.15rem",
+                        }}
+                      >
+                        Hora
+                      </label>
+                      <input
+                        type="time"
+                        value={editReservationTime}
+                        onChange={(e) =>
+                          setEditReservationTime(e.target.value)
+                        }
+                        style={{
+                          padding: "0.35rem 0.55rem",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #475569",
+                          background: "#020617",
+                          color: "white",
+                          fontSize: "0.85rem",
+                        }}
+                      />
+                    </div>
+
+                    {/* Personas */}
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      <label
+                        style={{
+                          fontSize: "0.8rem",
+                          marginBottom: "0.15rem",
+                        }}
+                      >
+                        Personas
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={editPartySize}
+                        onChange={(e) => setEditPartySize(e.target.value)}
+                        style={{
+                          padding: "0.35rem 0.55rem",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #475569",
+                          background: "#020617",
+                          color: "white",
+                          fontSize: "0.85rem",
+                        }}
+                      />
+                    </div>
+
+                    {/* Mesa (ID) */}
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      <label
+                        style={{
+                          fontSize: "0.8rem",
+                          marginBottom: "0.15rem",
+                        }}
+                      >
+                        Mesa ID (opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={editTableId}
+                        onChange={(e) => setEditTableId(e.target.value)}
+                        placeholder="Dejá vacío para no cambiar"
+                        style={{
+                          padding: "0.35rem 0.55rem",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #475569",
+                          background: "#020617",
+                          color: "white",
+                          fontSize: "0.85rem",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handlePatchReservationBasics}
+                    disabled={updating}
+                    style={{
+                      padding: "0.45rem 0.9rem",
+                      borderRadius: "0.6rem",
+                      border: "none",
+                      background: "#22c55e",
+                      color: "white",
+                      fontWeight: 600,
+                      fontSize: "0.85rem",
+                      cursor: updating ? "default" : "pointer",
+                      marginBottom: "0.35rem",
+                    }}
+                  >
+                    {updating
+                      ? "Guardando datos básicos..."
+                      : "Guardar datos básicos"}
+                  </button>
+                </div>
+
                 {/* Bloque de edición de estado */}
                 <div
                   style={{
@@ -1411,7 +2115,6 @@ export default function ReservationsPage() {
                     </select>
                   </div>
 
-                  {/* Campos extra para complete / cancel */}
                   {editStatus === "completed" && (
                     <div
                       style={{

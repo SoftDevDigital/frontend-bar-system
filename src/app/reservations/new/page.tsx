@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import { createReservation, type CreateReservationPayload } from "@/app/lib/api";
 
 export default function NewReservationPage() {
@@ -9,11 +9,36 @@ export default function NewReservationPage() {
     reservationDate: "",
     reservationTime: "",
     notes: "",
-  });
+  } as any); // 👈 si tu tipo ya tiene `notes`, podés sacar el `as any`
+
+  // 👇 nuevo: guardamos el customerId si el usuario logueado es "customer"
+  const [customerId, setCustomerId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  // 👇 leemos el usuario logueado desde localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const raw = localStorage.getItem("festgo_user");
+    if (!raw) {
+      setCustomerId(null);
+      return;
+    }
+
+    try {
+      const user = JSON.parse(raw) as { userId?: string; role?: string };
+      if (user.userId && user.role === "customer") {
+        setCustomerId(user.userId);
+      } else {
+        setCustomerId(null);
+      }
+    } catch {
+      setCustomerId(null);
+    }
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -22,11 +47,18 @@ export default function NewReservationPage() {
     setLoading(true);
 
     try {
-      const payload: CreateReservationPayload = {
+      const basePayload: CreateReservationPayload = {
         partySize: Number(form.partySize),
         reservationDate: form.reservationDate,
         reservationTime: form.reservationTime,
+        // si tu DTO admite `notes`, lo dejamos como venías haciéndolo
         notes: form.notes?.trim() || undefined,
+      } as any;
+
+      // 👇 si hay cliente logueado como "customer", agregamos customerId
+      const payload: CreateReservationPayload = {
+        ...basePayload,
+        ...(customerId ? { customerId } : {}),
       };
 
       const res = await createReservation(payload);
@@ -39,8 +71,8 @@ export default function NewReservationPage() {
 
         // reset suave
         setForm((prev) => ({
+          ...prev,
           partySize: 2,
-          reservationDate: prev.reservationDate,
           reservationTime: "",
           notes: "",
         }));
@@ -55,6 +87,8 @@ export default function NewReservationPage() {
       setLoading(false);
     }
   };
+
+  const isLoggedCustomer = Boolean(customerId);
 
   return (
     <main
@@ -81,6 +115,21 @@ export default function NewReservationPage() {
           </h1>
           <p style={{ fontSize: "0.9rem", color: "#9ca3af" }}>
             Elegí fecha, horario y cantidad de personas para tu visita.
+          </p>
+
+          {/* 👇 pequeño texto indicando si es cliente registrado o visitante */}
+          <p
+            style={{
+              fontSize: "0.8rem",
+              color: "#6b7280",
+              marginTop: "0.25rem",
+            }}
+          >
+            Estás reservando como{" "}
+            <span style={{ color: "#e5e7eb", fontWeight: 500 }}>
+              {isLoggedCustomer ? "cliente registrado (historial guardado)" : "visitante (sin historial)"}
+            </span>
+            .
           </p>
         </header>
 
@@ -235,7 +284,7 @@ export default function NewReservationPage() {
               </label>
               <textarea
                 rows={2}
-                value={form.notes}
+                value={form.notes as any}
                 onChange={(e) =>
                   setForm((prev) => ({
                     ...prev,
