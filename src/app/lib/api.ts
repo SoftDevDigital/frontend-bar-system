@@ -489,7 +489,6 @@ export type NutritionalInfo = {
   protein: number;
   carbs: number;
   fat: number;
-  // opcionales si el backend los usa
   fiber?: number;
   sodium?: number;
 };
@@ -497,10 +496,19 @@ export type NutritionalInfo = {
 export type Product = {
   id: string;
   name: string;
-  description: string;
+  code?: string;
+  description?: string;
   price: number;
   categoryId: string;
+
+  status?: string;
   isAvailable: boolean;
+
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
+  updatedBy?: string;
+
   preparationTime?: number;
   allergens?: string[];
   nutritionalInfo?: NutritionalInfo;
@@ -515,7 +523,6 @@ export async function getProducts(params?: {
   if (typeof params?.available === "boolean") {
     searchParams.set("available", String(params.available));
   }
-
   if (params?.category) {
     searchParams.set("category", params.category);
   }
@@ -525,9 +532,7 @@ export async function getProducts(params?: {
 
   const res = await fetch(url, {
     method: "GET",
-    headers: {
-      accept: "application/json",
-    },
+    headers: { accept: "application/json" },
   });
 
   return (await res.json()) as ApiBaseResponse<Product[]>;
@@ -535,39 +540,11 @@ export async function getProducts(params?: {
 
 /* ====== CREATE PRODUCT (POST /products) – SOLO ADMIN ====== */
 
-export type CreateProductNutritionalInfo = {
-  protein: number;
-  carbs: number;
-  fat: number;
-  fiber: number;
-  sodium: number;
-};
-
 export type CreateProductPayload = {
   name: string;
-  description?: string;
   price: number;
-  costPrice?: number;
-  categoryId: string;
-  sku?: string;
-  barcode?: string;
-  status?: string;          // ej: "available"
-  imageUrl?: string;
-  images?: string[];
-  isAvailable?: boolean;
-  preparationTime?: number;
-  calories?: number;
-  allergens?: string[];
-  ingredients?: string[];
-  nutritionalInfo?: CreateProductNutritionalInfo;
-  tags?: string[];
-  isVegan?: boolean;
-  isGlutenFree?: boolean;
-  isSpicy?: boolean;
-  spicyLevel?: number;
-  isPopular?: boolean;
-  discountPercentage?: number;
-  minimumAge?: number;
+  code: string;
+  categoryId: string; // UUID
 };
 
 export type CreateProductResponse = ApiBaseResponse<Product>;
@@ -577,7 +554,7 @@ export type CreateProductResponse = ApiBaseResponse<Product>;
  * POST /api/v1/products
  *
  * 👑 SOLO ADMIN
- * Requiere JWT con rol "admin" (el backend valida el rol).
+ * Body EXACTO Swagger: { name, price, code, categoryId }
  */
 export async function createProduct(
   payload: CreateProductPayload
@@ -592,18 +569,47 @@ export async function createProduct(
     throw new Error("No hay token. Iniciá sesión como administrador.");
   }
 
+  // ✅ Mandamos SOLO los 4 campos que Swagger acepta
+  const body = {
+    name: payload.name,
+    price: payload.price,
+    code: payload.code,
+    categoryId: payload.categoryId,
+  };
+
   const res = await fetch(`${API_BASE_URL}/products`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      accept: "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      accept: "*/*",
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 
   return (await res.json()) as CreateProductResponse;
 }
+
+/* ====== CREATE PRODUCT (POST /products) – SOLO ADMIN ====== */
+
+export type CreateProductNutritionalInfo = {
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  sodium: number;
+};
+
+
+
+/**
+ * Crea un producto del menú.
+ * POST /api/v1/products
+ *
+ * 👑 SOLO ADMIN
+ * Requiere JWT con rol "admin" (el backend valida el rol).
+ */
+
 
 /* ========== CREATE TABLE (ADMIN) ========== */
 
@@ -2736,3 +2742,190 @@ export type ReservationCustomerDetails = {
   email?: string;
 };
 
+/* ========== FINANCIAL MOVEMENTS (SUMMARY) - SOLO ADMIN ========== */
+
+
+export type FinancialSummaryData = {
+  totalIncome: number;
+  totalExpenses: number;
+  netIncome: number;
+  byType: Record<string, number>;
+  byCategory: Record<string, number>;
+  count: number;
+};
+
+export type FinancialSummaryEnvelope = {
+  success: boolean;
+  message: string;
+  data: FinancialSummaryData;
+};
+
+export type GetFinancialSummaryResponse =
+  ApiBaseResponse<FinancialSummaryEnvelope>;
+
+/* ========== FINANCIAL MOVEMENTS (SUMMARY) - SOLO ADMIN ========== */
+
+export type FinancialSummaryData = {
+  totalIncome: number;
+  totalExpenses: number;
+  netIncome: number;
+  byType: Record<string, number>;
+  byCategory: Record<string, number>;
+  count: number;
+};
+
+// ✅ FIX: la API ya devuelve data directo (no "data.data")
+export type GetFinancialSummaryResponse = ApiBaseResponse<FinancialSummaryData>;
+
+export async function getFinancialSummary(params?: {
+  startDate?: string; // "YYYY-MM-DD"
+  endDate?: string;   // "YYYY-MM-DD"
+}): Promise<GetFinancialSummaryResponse> {
+  const searchParams = new URLSearchParams();
+
+  if (params?.startDate) searchParams.set("startDate", params.startDate);
+  if (params?.endDate) searchParams.set("endDate", params.endDate);
+
+  const qs = searchParams.toString();
+  const url = qs
+    ? `${API_BASE_URL}/financial-movements/summary?${qs}`
+    : `${API_BASE_URL}/financial-movements/summary`;
+
+  let token: string | null = null;
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      accept: "*/*",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  return (await res.json()) as GetFinancialSummaryResponse;
+}
+
+/* ========== FINANCIAL MOVEMENTS (LIST) - SOLO ADMIN ========== */
+
+export type FinancialMovement = {
+  id: string;
+  type: string; // ej: "sale"
+  amount: number;
+  category: string; // ej: "ventas"
+  subcategory?: string; // ej: "venta_directa"
+  paymentMethod?: string; // ej: "cash"
+  description?: string;
+  notes?: string;
+
+  billId?: string;
+  orderId?: string;
+
+  reference?: string;
+  movementNumber?: string;
+
+  createdAt: string;
+  updatedAt?: string;
+
+  createdBy?: string;
+  updatedBy?: string;
+};
+
+export type GetFinancialMovementsResponse = ApiBaseResponse<FinancialMovement[]>;
+
+export async function getFinancialMovements(params?: {
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  type?: string; // ej: "sale"
+}): Promise<GetFinancialMovementsResponse> {
+  const searchParams = new URLSearchParams();
+
+  if (params?.startDate) searchParams.set("startDate", params.startDate);
+  if (params?.endDate) searchParams.set("endDate", params.endDate);
+  if (params?.type) searchParams.set("type", params.type);
+
+  const qs = searchParams.toString();
+  const url = qs
+    ? `${API_BASE_URL}/financial-movements?${qs}`
+    : `${API_BASE_URL}/financial-movements`;
+
+  let token: string | null = null;
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      accept: "*/*",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  return (await res.json()) as GetFinancialMovementsResponse;
+}
+
+
+/* ========== FINANCIAL MOVEMENTS (CREATE) - SOLO ADMIN ========== */
+
+export type FinancialMovementType =
+  | "sale"
+  | "INVENTORY_PURCHASE"
+  | "SALARY_PAYMENT"
+  | "UTILITY_PAYMENT"
+  | "TAX_PAYMENT"
+  | "EXPENSE"
+  | "CASH_WITHDRAWAL"
+  | "CASH_DEPOSIT";
+
+export type CreateFinancialMovementPayload = {
+  type: FinancialMovementType;
+  amount: number;
+  description?: string;
+  category?: string;
+  subcategory?: string;
+  supplierId?: string;
+  employeeId?: string;
+  paymentMethod?: string;
+  receiptUrl?: string;
+  approvedBy?: string;
+  notes?: string;
+  tags?: string[];
+};
+
+export type CreateFinancialMovementResponse = ApiBaseResponse<FinancialMovement>;
+
+export async function createFinancialMovement(
+  payload: CreateFinancialMovementPayload
+): Promise<CreateFinancialMovementResponse> {
+  let token: string | null = null;
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  if (!token) {
+    throw new Error("No hay token. Iniciá sesión como administrador.");
+  }
+
+  // Limpieza: no mandamos strings vacíos ni undefined
+  const cleanPayload: any = {};
+  Object.entries(payload).forEach(([k, v]) => {
+    if (v === undefined || v === null) return;
+    if (typeof v === "string" && v.trim() === "") return;
+    if (Array.isArray(v) && v.length === 0) return;
+    cleanPayload[k] = v;
+  });
+
+  const res = await fetch(`${API_BASE_URL}/financial-movements`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "*/*",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(cleanPayload),
+  });
+
+  return (await res.json()) as CreateFinancialMovementResponse;
+}

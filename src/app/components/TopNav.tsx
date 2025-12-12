@@ -48,6 +48,7 @@ export default function TopNav() {
   }, []);
 
   const isStaff = role === "admin" || role === "employee";
+  const isAdmin = role === "admin"; // ✅ NUEVO
   const isCustomer = role === "customer";
 
   // 👇 en estas rutas NO queremos mostrar el link "Menú" para visitantes
@@ -128,7 +129,6 @@ export default function TopNav() {
                 <span style={{ cursor: "pointer" }}>Inventario</span>
               </Link>
 
-              {/* 👇 NUEVO: link para ver/administrar productos */}
               <Link
                 href="/products"
                 style={{ textDecoration: "none", color: "inherit" }}
@@ -191,6 +191,30 @@ export default function TopNav() {
               >
                 <span style={{ cursor: "pointer" }}>Waitlist</span>
               </Link>
+
+              {/* ✅ FINANZAS: solo admin */}
+              {isAdmin && (
+                <>
+                  <Link
+                    href="/financial-summary"
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    <span style={{ cursor: "pointer" }}>
+                      Resumen financiero
+                    </span>
+                  </Link>
+
+                  {/* ✅ NUEVO: Movimientos financieros */}
+                  <Link
+                    href="/financial-movements"
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    <span style={{ cursor: "pointer" }}>
+                      Movimientos financieros
+                    </span>
+                  </Link>
+                </>
+              )}
             </>
           )}
 
@@ -227,7 +251,7 @@ export default function TopNav() {
             </>
           )}
 
-          {/* VISITANTE – solo mostramos "Menú" en páginas internas, no en home/login/register */}
+          {/* VISITANTE */}
           {!role && !hideVisitorMenuOnPath && (
             <Link
               href="/products"
