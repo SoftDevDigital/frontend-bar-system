@@ -2929,3 +2929,84 @@ export async function createFinancialMovement(
 
   return (await res.json()) as CreateFinancialMovementResponse;
 }
+
+
+export type Category = {
+  id: string;
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  sortOrder?: number | null;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ApiBaseResponse<TData = any> = {
+  success: boolean;
+  message: string;
+  data?: TData;
+  statusCode: number;
+  timestamp: string;
+};
+
+
+
+export async function getCategories(): Promise<ApiBaseResponse<Category[]>> {
+  const res = await fetch(`${API_BASE_URL}/categories`, {
+    method: "GET",
+    headers: { accept: "*/*" },
+    cache: "no-store",
+  });
+
+  return (await res.json()) as ApiBaseResponse<Category[]>;
+}
+
+/* ====== CREATE CATEGORY (POST /categories) – SOLO ADMIN ====== */
+
+export type CreateCategoryPayload = {
+  name: string;
+  description?: string;
+  imageUrl?: string;          // debe ser URL válida si se envía
+  sortOrder?: number;
+  parentCategoryId?: string;  // UUID si se envía
+  color?: string;
+  icon?: string;
+};
+
+export type CreateCategoryResponse = ApiBaseResponse<Category>;
+
+export async function createCategory(
+  payload: CreateCategoryPayload
+): Promise<CreateCategoryResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  if (!token) {
+    throw new Error("No hay token. Iniciá sesión como administrador.");
+  }
+
+  // ✅ limpiamos: no mandamos strings vacíos ni undefined
+  const clean: any = {};
+  Object.entries(payload).forEach(([k, v]) => {
+    if (v === undefined || v === null) return;
+    if (typeof v === "string" && v.trim() === "") return;
+    clean[k] = v;
+  });
+
+  const res = await fetch(`${API_BASE_URL}/categories`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "*/*",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(clean),
+  });
+
+  return (await res.json()) as CreateCategoryResponse;
+}
