@@ -15,7 +15,6 @@ import {
   type BillTicket,
 } from "../lib/api";
 
-// mismo tipo que en otras páginas
 type UserRole = "admin" | "employee" | "customer" | string | null;
 
 type DirectSaleItemInput = {
@@ -49,16 +48,8 @@ export default function BillsPage() {
 
   const isStaff = role === "admin" || role === "employee";
 
-  // 👉 filtros listado de facturas
-  const [date, setDate] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [status, setStatus] = useState("");
-  const [limit, setLimit] = useState(20);
-  const [page, setPage] = useState(1);
-
-  const [bills, setBills] = useState<Bill[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
+  // 👉 Estado para tabs/secciones
+  const [activeTab, setActiveTab] = useState<"direct-sale" | "list">("direct-sale");
 
   // 👉 productos del menú (para Venta Directa)
   const [products, setProducts] = useState<Product[]>([]);
@@ -107,39 +98,16 @@ export default function BillsPage() {
     }
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleChangeDirectSaleItem = (
-    index: number,
-    field: keyof DirectSaleItemInput,
-    value: string
-  ) => {
-    setDsItems((prev) =>
-      prev.map((it, i) =>
-        i === index
-          ? {
-              ...it,
-              [field]: field === "quantity" ? Number(value) || 1 : value,
-            }
-          : it
-      )
-    );
-  };
+  // 👉 LISTADO DE FACTURAS
+  const [date, setDate] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [status, setStatus] = useState("");
+  const [limit, setLimit] = useState(20);
+  const [page, setPage] = useState(1);
 
-  const handleAddDirectSaleItemRow = () => {
-    setDsItems((prev) => [...prev, { productId: "", quantity: 1 }]);
-  };
-
-  const handleRemoveDirectSaleItemRow = (index: number) => {
-    setDsItems((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const calculateDirectSaleTotal = () => {
-    return dsItems.reduce((sum, item) => {
-      if (!item.productId || item.quantity <= 0) return sum;
-      const p = products.find((prod) => prod.id === item.productId);
-      if (!p) return sum;
-      return sum + p.price * item.quantity;
-    }, 0);
-  };
+  const [bills, setBills] = useState<Bill[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   // ================== IMPRESIÓN DE TICKET ==================
 
@@ -301,6 +269,40 @@ export default function BillsPage() {
 
   // ================== CREAR VENTA DIRECTA ==================
 
+  const handleChangeDirectSaleItem = (
+    index: number,
+    field: keyof DirectSaleItemInput,
+    value: string
+  ) => {
+    setDsItems((prev) =>
+      prev.map((it, i) =>
+        i === index
+          ? {
+              ...it,
+              [field]: field === "quantity" ? Number(value) || 1 : value,
+            }
+          : it
+      )
+    );
+  };
+
+  const handleAddDirectSaleItemRow = () => {
+    setDsItems((prev) => [...prev, { productId: "", quantity: 1 }]);
+  };
+
+  const handleRemoveDirectSaleItemRow = (index: number) => {
+    setDsItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const calculateDirectSaleTotal = () => {
+    return dsItems.reduce((sum, item) => {
+      if (!item.productId || item.quantity <= 0) return sum;
+      const p = products.find((prod) => prod.id === item.productId);
+      if (!p) return sum;
+      return sum + p.price * item.quantity;
+    }, 0);
+  };
+
   const handleCreateDirectSale = async (e: React.FormEvent) => {
     e.preventDefault();
     setDsError("");
@@ -369,7 +371,7 @@ export default function BillsPage() {
       const bill = res.data;
 
       setDsSuccess(
-        `Venta directa creada. Factura N° ${bill.billNumber}. Total: $${bill.totalAmount.toFixed(
+        `✅ Venta directa creada. Factura N° ${bill.billNumber}. Total: $${bill.totalAmount.toFixed(
           2
         )}. Estado: ${bill.status}.`
       );
@@ -387,8 +389,9 @@ export default function BillsPage() {
       setDsCustomerId("");
       setDsNotes("");
 
-      // refresco listado de facturas
+      // refresco listado de facturas y cambio a tab de listado
       await handleFetch();
+      setActiveTab("list");
     } catch (err: any) {
       setDsError(
         err?.message || "Error inesperado al crear la venta directa."
@@ -431,12 +434,12 @@ export default function BillsPage() {
         <main
           style={{
             padding: "2rem",
-            maxWidth: "1200px",
+            maxWidth: "1400px",
             margin: "0 auto",
           }}
         >
           <h1 style={{ fontSize: "2rem", marginBottom: "1rem" }}>
-            💳 Facturas (Bills)
+            💳 Facturación
           </h1>
           <p style={{ color: "#9ca3af" }}>Cargando permisos...</p>
         </main>
@@ -450,12 +453,12 @@ export default function BillsPage() {
         <main
           style={{
             padding: "2rem",
-            maxWidth: "1200px",
+            maxWidth: "1400px",
             margin: "0 auto",
           }}
         >
           <h1 style={{ fontSize: "2rem", marginBottom: "1rem" }}>
-            💳 Facturas (Bills)
+            💳 Facturación
           </h1>
           <p style={{ color: "#f87171", maxWidth: "520px" }}>
             No tenés permisos para ver esta página.
@@ -473,586 +476,832 @@ export default function BillsPage() {
       <main
         style={{
           padding: "2rem",
-          maxWidth: "1200px",
+          maxWidth: "1400px",
           margin: "0 auto",
         }}
       >
-        <h1 style={{ fontSize: "2rem", marginBottom: "1rem" }}>
-          💳 Facturas (Bills)
-        </h1>
+        {/* HEADER */}
+        <div style={{ marginBottom: "2rem" }}>
+          <h1 style={{ fontSize: "2.25rem", marginBottom: "0.5rem", fontWeight: 700 }}>
+            💳 Facturación
+          </h1>
+          <p style={{ color: "#9ca3af", fontSize: "1rem" }}>
+            Gestioná ventas directas y consultá el historial de facturas
+          </p>
+        </div>
 
-        {/* =========================
-            VENTA DIRECTA (SIN MESA)
-        ========================== */}
-        <section
+        {/* TABS */}
+        <div
           style={{
-            background: "#020617",
-            padding: "1rem",
-            borderRadius: "0.75rem",
-            marginBottom: "1.5rem",
-            border: "1px solid #334155",
+            display: "flex",
+            gap: "0.5rem",
+            marginBottom: "2rem",
+            borderBottom: "2px solid #334155",
           }}
         >
-          <h2 style={{ fontSize: "1.1rem", marginBottom: "0.75rem" }}>
-            Venta directa (sin mesa)
-          </h2>
-          <p
+          <button
+            type="button"
+            onClick={() => setActiveTab("direct-sale")}
             style={{
-              fontSize: "0.85rem",
-              color: "#9ca3af",
-              marginBottom: "0.75rem",
+              padding: "0.75rem 1.5rem",
+              background: "transparent",
+              border: "none",
+              borderBottom: activeTab === "direct-sale" ? "3px solid #22c55e" : "3px solid transparent",
+              color: activeTab === "direct-sale" ? "#22c55e" : "#9ca3af",
+              fontWeight: activeTab === "direct-sale" ? 600 : 400,
+              cursor: "pointer",
+              fontSize: "0.95rem",
+              transition: "all 0.2s",
             }}
           >
-            Crea una factura directa para ventas rápidas / takeaway. No requiere
-            orden ni mesa previa.
-          </p>
-
-          {dsError && (
-            <p
-              style={{
-                color: "#f87171",
-                marginBottom: "0.5rem",
-                fontSize: "0.9rem",
-              }}
-            >
-              {dsError}
-            </p>
-          )}
-          {dsSuccess && (
-            <p
-              style={{
-                color: "#4ade80",
-                marginBottom: "0.5rem",
-                fontSize: "0.9rem",
-              }}
-            >
-              {dsSuccess}
-            </p>
-          )}
-
-          <form
-            onSubmit={handleCreateDirectSale}
+            🛒 Venta Directa
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("list");
+              handleFetch();
+            }}
             style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.75rem",
+              padding: "0.75rem 1.5rem",
+              background: "transparent",
+              border: "none",
+              borderBottom: activeTab === "list" ? "3px solid #3b82f6" : "3px solid transparent",
+              color: activeTab === "list" ? "#3b82f6" : "#9ca3af",
+              fontWeight: activeTab === "list" ? 600 : 400,
+              cursor: "pointer",
+              fontSize: "0.95rem",
+              transition: "all 0.2s",
             }}
           >
-            {/* Items */}
-            <div>
-              <h3
+            📋 Historial de Facturas
+          </button>
+        </div>
+
+        {/* TAB CONTENT: VENTA DIRECTA */}
+        {activeTab === "direct-sale" && (
+          <section
+            style={{
+              background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+              padding: "2rem",
+              borderRadius: "1rem",
+              border: "1px solid #334155",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.3)",
+            }}
+          >
+            <div style={{ marginBottom: "1.5rem" }}>
+              <h2 style={{ fontSize: "1.5rem", marginBottom: "0.5rem", fontWeight: 600 }}>
+                Nueva Venta Directa
+              </h2>
+              <p style={{ color: "#9ca3af", fontSize: "0.9rem" }}>
+                Creá una factura rápida para ventas sin mesa (takeaway, delivery, etc.)
+              </p>
+            </div>
+
+            {dsError && (
+              <div
                 style={{
-                  fontSize: "0.95rem",
-                  marginBottom: "0.4rem",
-                  fontWeight: 600,
+                  padding: "0.75rem 1rem",
+                  borderRadius: "0.5rem",
+                  background: "#7f1d1d",
+                  border: "1px solid #dc2626",
+                  color: "#fecaca",
+                  marginBottom: "1rem",
+                  fontSize: "0.9rem",
                 }}
               >
-                Productos
-              </h3>
+                ❌ {dsError}
+              </div>
+            )}
+            {dsSuccess && (
+              <div
+                style={{
+                  padding: "0.75rem 1rem",
+                  borderRadius: "0.5rem",
+                  background: "#14532d",
+                  border: "1px solid #22c55e",
+                  color: "#bbf7d0",
+                  marginBottom: "1rem",
+                  fontSize: "0.9rem",
+                }}
+              >
+                {dsSuccess}
+              </div>
+            )}
 
-              {loadingProducts && (
-                <p style={{ color: "#9ca3af", fontSize: "0.85rem" }}>
-                  Cargando productos del menú...
-                </p>
-              )}
-
-              {dsItems.map((item, index) => (
-                <div
-                  key={index}
+            <form
+              onSubmit={handleCreateDirectSale}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "1.5rem",
+              }}
+            >
+              {/* PRODUCTOS */}
+              <div>
+                <h3
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "2fr minmax(80px,0.8fr) auto",
-                    gap: "0.5rem",
-                    marginBottom: "0.5rem",
-                    alignItems: "center",
+                    fontSize: "1rem",
+                    marginBottom: "0.75rem",
+                    fontWeight: 600,
+                    color: "#e5e7eb",
                   }}
                 >
-                  {/* Producto */}
-                  <select
-                    value={item.productId}
-                    onChange={(e) =>
-                      handleChangeDirectSaleItem(
-                        index,
-                        "productId",
-                        e.target.value
-                      )
-                    }
+                  Productos
+                </h3>
+
+                {loadingProducts && (
+                  <p style={{ color: "#9ca3af", fontSize: "0.85rem" }}>
+                    Cargando productos del menú...
+                  </p>
+                )}
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  {dsItems.map((item, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr minmax(100px,0.8fr) auto",
+                        gap: "0.75rem",
+                        alignItems: "center",
+                        padding: "0.75rem",
+                        background: "#020617",
+                        borderRadius: "0.5rem",
+                        border: "1px solid #334155",
+                      }}
+                    >
+                      <select
+                        value={item.productId}
+                        onChange={(e) =>
+                          handleChangeDirectSaleItem(
+                            index,
+                            "productId",
+                            e.target.value
+                          )
+                        }
+                        style={{
+                          padding: "0.6rem 0.75rem",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #475569",
+                          background: "#0f172a",
+                          color: "white",
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        <option value="">Seleccionar producto...</option>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} — ${p.price.toFixed(2)}
+                          </option>
+                        ))}
+                      </select>
+
+                      <input
+                        type="number"
+                        min={1}
+                        value={item.quantity}
+                        onChange={(e) =>
+                          handleChangeDirectSaleItem(
+                            index,
+                            "quantity",
+                            e.target.value
+                          )
+                        }
+                        placeholder="Cantidad"
+                        style={{
+                          padding: "0.6rem 0.75rem",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #475569",
+                          background: "#0f172a",
+                          color: "white",
+                          fontSize: "0.9rem",
+                          width: "100%",
+                        }}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveDirectSaleItemRow(index)}
+                        disabled={dsItems.length === 1}
+                        style={{
+                          padding: "0.6rem 1rem",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #f97316",
+                          background: dsItems.length === 1 ? "#7c2d1233" : "#7c2d1266",
+                          color: "#fed7aa",
+                          fontSize: "0.85rem",
+                          cursor: dsItems.length === 1 ? "not-allowed" : "pointer",
+                          whiteSpace: "nowrap",
+                          opacity: dsItems.length === 1 ? 0.5 : 1,
+                        }}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddDirectSaleItemRow}
+                  style={{
+                    marginTop: "0.75rem",
+                    padding: "0.6rem 1.2rem",
+                    borderRadius: "0.5rem",
+                    border: "1px solid #3b82f6",
+                    background: "#1d4ed833",
+                    color: "#bfdbfe",
+                    fontSize: "0.9rem",
+                    cursor: "pointer",
+                    fontWeight: 500,
+                  }}
+                >
+                  + Agregar producto
+                </button>
+
+                {/* TOTAL ESTIMADO */}
+                <div
+                  style={{
+                    marginTop: "1rem",
+                    padding: "1rem",
+                    background: "#1e293b",
+                    borderRadius: "0.5rem",
+                    border: "1px solid #334155",
+                  }}
+                >
+                  <p
                     style={{
-                      padding: "0.45rem 0.6rem",
-                      borderRadius: "0.5rem",
-                      border: "1px solid #475569",
-                      background: "#020617",
-                      color: "white",
-                      fontSize: "0.85rem",
+                      fontSize: "1.1rem",
+                      fontWeight: 600,
+                      color: "#e5e7eb",
                     }}
                   >
-                    <option value="">Seleccionar producto...</option>
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} — ${p.price.toFixed(2)}
-                      </option>
-                    ))}
-                  </select>
+                    Total estimado: <span style={{ color: "#22c55e" }}>${directSaleTotal.toFixed(2)}</span>
+                  </p>
+                </div>
+              </div>
 
-                  {/* Cantidad */}
+              {/* DATOS DE PAGO Y CLIENTE */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "0.5rem",
+                      fontSize: "0.9rem",
+                      fontWeight: 500,
+                      color: "#e5e7eb",
+                    }}
+                  >
+                    Método de pago *
+                  </label>
+                  <select
+                    value={dsPaymentMethod}
+                    onChange={(e) =>
+                      setDsPaymentMethod(e.target.value as PaymentMethod)
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    <option value="cash">💵 Efectivo</option>
+                    <option value="credit_card">💳 Tarjeta de crédito</option>
+                    <option value="debit_card">💳 Tarjeta de débito</option>
+                    <option value="transfer">🏦 Transferencia</option>
+                    <option value="digital_wallet">📱 Billetera digital</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "0.5rem",
+                      fontSize: "0.9rem",
+                      fontWeight: 500,
+                      color: "#e5e7eb",
+                    }}
+                  >
+                    Monto pagado *
+                  </label>
                   <input
                     type="number"
-                    min={1}
-                    value={item.quantity}
-                    onChange={(e) =>
-                      handleChangeDirectSaleItem(
-                        index,
-                        "quantity",
-                        e.target.value
-                      )
-                    }
+                    min={0}
+                    step="0.01"
+                    value={dsPaidAmount}
+                    onChange={(e) => setDsPaidAmount(e.target.value)}
+                    placeholder="Ej: 50.00"
                     style={{
-                      padding: "0.45rem 0.6rem",
+                      width: "100%",
+                      padding: "0.6rem 0.75rem",
                       borderRadius: "0.5rem",
                       border: "1px solid #475569",
-                      background: "#020617",
+                      background: "#0f172a",
                       color: "white",
-                      fontSize: "0.85rem",
-                      width: "100%",
+                      fontSize: "0.9rem",
                     }}
                   />
+                </div>
 
-                  {/* Eliminar fila */}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveDirectSaleItemRow(index)}
-                    disabled={dsItems.length === 1}
+                <div>
+                  <label
                     style={{
-                      padding: "0.35rem 0.7rem",
-                      borderRadius: "999px",
-                      border: "1px solid #f97316",
-                      background: "#7c2d1233",
-                      color: "#fed7aa",
-                      fontSize: "0.8rem",
-                      cursor:
-                        dsItems.length === 1 ? "default" : "pointer",
-                      whiteSpace: "nowrap",
+                      display: "block",
+                      marginBottom: "0.5rem",
+                      fontSize: "0.9rem",
+                      fontWeight: 500,
+                      color: "#e5e7eb",
                     }}
                   >
-                    Eliminar
-                  </button>
+                    Descuento (opcional)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={dsDiscountAmount}
+                    onChange={(e) => setDsDiscountAmount(e.target.value)}
+                    placeholder="Ej: 0.00"
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                      fontSize: "0.9rem",
+                    }}
+                  />
                 </div>
-              ))}
 
-              <button
-                type="button"
-                onClick={handleAddDirectSaleItemRow}
-                style={{
-                  marginTop: "0.5rem",
-                  padding: "0.4rem 0.9rem",
-                  borderRadius: "999px",
-                  border: "1px solid #3b82f6",
-                  background: "#1d4ed833",
-                  color: "#bfdbfe",
-                  fontSize: "0.8rem",
-                  cursor: "pointer",
-                }}
-              >
-                + Agregar otro producto
-              </button>
-            </div>
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "0.5rem",
+                      fontSize: "0.9rem",
+                      fontWeight: 500,
+                      color: "#e5e7eb",
+                    }}
+                  >
+                    ID Cliente (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={dsCustomerId}
+                    onChange={(e) => setDsCustomerId(e.target.value)}
+                    placeholder="customer-uuid"
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                      fontSize: "0.9rem",
+                    }}
+                  />
+                </div>
 
-            {/* Total estimado */}
-            <p
-              style={{
-                marginTop: "0.25rem",
-                fontSize: "0.9rem",
-                color: "#e5e7eb",
-              }}
-            >
-              <strong>Total estimado:</strong> $
-              {directSaleTotal.toFixed(2)}
-            </p>
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "0.5rem",
+                      fontSize: "0.9rem",
+                      fontWeight: 500,
+                      color: "#e5e7eb",
+                    }}
+                  >
+                    Cashier ID (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={dsCashierId}
+                    onChange={(e) => setDsCashierId(e.target.value)}
+                    placeholder="Por defecto: tu userId"
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                      fontSize: "0.9rem",
+                    }}
+                  />
+                </div>
 
-            {/* Datos de pago y cliente */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: "0.75rem",
-                marginTop: "0.75rem",
-              }}
-            >
-              {/* Método de pago */}
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "0.25rem",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  Método de pago
-                </label>
-                <select
-                  value={dsPaymentMethod}
-                  onChange={(e) =>
-                    setDsPaymentMethod(e.target.value as PaymentMethod)
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "0.45rem 0.6rem",
-                    borderRadius: "0.5rem",
-                    border: "1px solid #475569",
-                    background: "#0f172a",
-                    color: "white",
-                    fontSize: "0.9rem",
-                  }}
-                >
-                  <option value="cash">Efectivo</option>
-                  <option value="credit_card">Tarjeta de crédito</option>
-                  <option value="debit_card">Tarjeta de débito</option>
-                  <option value="transfer">Transferencia</option>
-                  <option value="digital_wallet">
-                    Billetera digital (MercadoPago, etc.)
-                  </option>
-                </select>
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "0.5rem",
+                      fontSize: "0.9rem",
+                      fontWeight: 500,
+                      color: "#e5e7eb",
+                    }}
+                  >
+                    Notas (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={dsNotes}
+                    onChange={(e) => setDsNotes(e.target.value)}
+                    placeholder='Ej: "Para llevar"'
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                      fontSize: "0.9rem",
+                    }}
+                  />
+                </div>
               </div>
 
-              {/* Monto pagado */}
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "0.25rem",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  Monto pagado (paidAmount) *
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={dsPaidAmount}
-                  onChange={(e) => setDsPaidAmount(e.target.value)}
-                  placeholder="Ej: 50.00"
-                  style={{
-                    width: "100%",
-                    padding: "0.45rem 0.6rem",
-                    borderRadius: "0.5rem",
-                    border: "1px solid #475569",
-                    background: "#0f172a",
-                    color: "white",
-                    fontSize: "0.9rem",
-                  }}
-                />
-              </div>
-
-              {/* Descuento */}
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "0.25rem",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  Descuento (discountAmount) opcional
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={dsDiscountAmount}
-                  onChange={(e) =>
-                    setDsDiscountAmount(e.target.value)
-                  }
-                  placeholder="Ej: 0.00"
-                  style={{
-                    width: "100%",
-                    padding: "0.45rem 0.6rem",
-                    borderRadius: "0.5rem",
-                    border: "1px solid #475569",
-                    background: "#0f172a",
-                    color: "white",
-                    fontSize: "0.9rem",
-                  }}
-                />
-              </div>
-
-              {/* CustomerId opcional */}
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "0.25rem",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  ID Cliente (opcional)
-                </label>
-                <input
-                  type="text"
-                  value={dsCustomerId}
-                  onChange={(e) =>
-                    setDsCustomerId(e.target.value)
-                  }
-                  placeholder="customer-uuid"
-                  style={{
-                    width: "100%",
-                    padding: "0.45rem 0.6rem",
-                    borderRadius: "0.5rem",
-                    border: "1px solid #475569",
-                    background: "#0f172a",
-                    color: "white",
-                    fontSize: "0.9rem",
-                  }}
-                />
-              </div>
-
-              {/* CashierId opcional */}
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "0.25rem",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  Cashier ID (opcional)
-                </label>
-                <input
-                  type="text"
-                  value={dsCashierId}
-                  onChange={(e) =>
-                    setDsCashierId(e.target.value)
-                  }
-                  placeholder="cashier-uuid (por defecto tu userId)"
-                  style={{
-                    width: "100%",
-                    padding: "0.45rem 0.6rem",
-                    borderRadius: "0.5rem",
-                    border: "1px solid #475569",
-                    background: "#0f172a",
-                    color: "white",
-                    fontSize: "0.9rem",
-                  }}
-                />
-              </div>
-
-              {/* Notas opcionales */}
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "0.25rem",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  Notas (opcional)
-                </label>
-                <input
-                  type="text"
-                  value={dsNotes}
-                  onChange={(e) => setDsNotes(e.target.value)}
-                  placeholder='Ej: "Para llevar"'
-                  style={{
-                    width: "100%",
-                    padding: "0.45rem 0.6rem",
-                    borderRadius: "0.5rem",
-                    border: "1px solid #475569",
-                    background: "#0f172a",
-                    color: "white",
-                    fontSize: "0.9rem",
-                  }}
-                />
-              </div>
-            </div>
-
-            <div
-              style={{
-                marginTop: "0.75rem",
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "0.5rem",
-              }}
-            >
               <button
                 type="submit"
                 disabled={dsLoading}
                 style={{
-                  padding: "0.7rem 1.1rem",
-                  borderRadius: "0.6rem",
+                  padding: "0.875rem 1.5rem",
+                  borderRadius: "0.5rem",
                   border: "none",
                   background: dsLoading ? "#22c55e55" : "#22c55e",
                   color: "#022c22",
                   fontWeight: 600,
-                  cursor: dsLoading ? "default" : "pointer",
-                  fontSize: "0.9rem",
+                  cursor: dsLoading ? "not-allowed" : "pointer",
+                  fontSize: "1rem",
+                  transition: "all 0.2s",
+                  boxShadow: dsLoading ? "none" : "0 4px 12px rgba(34, 197, 94, 0.3)",
                 }}
               >
-                {dsLoading
-                  ? "Creando venta directa..."
-                  : "Crear venta directa"}
+                {dsLoading ? "⏳ Creando venta..." : "✅ Crear Venta Directa"}
               </button>
-            </div>
-          </form>
-        </section>
+            </form>
+          </section>
+        )}
 
-        {/* ========================
-            CONTROLES LISTADO BILLS
-        ========================= */}
-        <div
-          style={{
-            background: "#1e293b",
-            padding: "1rem",
-            borderRadius: "0.75rem",
-            marginBottom: "1.5rem",
-            display: "grid",
-            gap: "1rem",
-            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-          }}
-        >
+        {/* TAB CONTENT: LISTADO DE FACTURAS */}
+        {activeTab === "list" && (
           <div>
-            <label htmlFor="date-input">Fecha</label>
-            <input
-              id="date-input"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "0.4rem",
-                background: "white",
-                color: "black",
-              }}
-            />
-          </div>
-
-          <div>
-            <label>Método de pago</label>
-            <select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              style={{ width: "100%", padding: "0.4rem" }}
-            >
-              <option value="">(Todos)</option>
-              <option value="cash">cash</option>
-              <option value="card">card</option>
-            </select>
-          </div>
-
-          <div>
-            <label>Estado</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              style={{ width: "100%", padding: "0.4rem" }}
-            >
-              <option value="">(Todos)</option>
-              <option value="paid">paid</option>
-              <option value="pending">pending</option>
-              <option value="cancelled">cancelled</option>
-            </select>
-          </div>
-
-          <div>
-            <label>Limit</label>
-            <input
-              type="number"
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-              style={{ width: "100%", padding: "0.4rem" }}
-            />
-          </div>
-
-          <div>
-            <label>Page</label>
-            <input
-              type="number"
-              value={page}
-              onChange={(e) => setPage(Number(e.target.value))}
-              style={{ width: "100%", padding: "0.4rem" }}
-            />
-          </div>
-
-          <button
-            onClick={handleFetch}
-            style={{
-              padding: "0.8rem",
-              background: "#22c55e",
-              borderRadius: "0.6rem",
-              fontWeight: "bold",
-            }}
-          >
-            {loading ? "Buscando..." : "Buscar facturas"}
-          </button>
-        </div>
-
-        {errorMsg && <p style={{ color: "#f87171" }}>{errorMsg}</p>}
-
-        {/* LISTADO DE BILLS */}
-        <div style={{ display: "grid", gap: "1rem" }}>
-          {bills.map((b) => (
+            {/* FILTROS */}
             <div
-              key={b.id}
               style={{
                 background: "#1e293b",
-                padding: "1rem",
+                padding: "1.5rem",
                 borderRadius: "0.75rem",
+                marginBottom: "1.5rem",
+                border: "1px solid #334155",
               }}
             >
-              <h3>Factura #{b.id}</h3>
-              <p>
-                <strong>Pedido:</strong> {b.orderId}
-              </p>
-              <p>
-                <strong>Mesa:</strong> #{b.tableNumber}
-              </p>
-              <p>
-                <strong>Subtotal:</strong> ${b.subtotal}
-              </p>
-              <p>
-                <strong>Impuesto (tax):</strong> ${b.tax}
-              </p>
-              <p>
-                <strong>Propina (tip):</strong> ${b.tip}
-              </p>
-              <p>
-                <strong>Total:</strong> ${b.total}
-              </p>
-              <p>
-                <strong>Método de pago:</strong> {b.paymentMethod}
-              </p>
-              <p>
-                <strong>Estado:</strong> {b.status}
-              </p>
-              <p>
-                <strong>Creada:</strong>{" "}
-                {new Date(b.createdAt).toLocaleString()}
-              </p>
-
-              <button
-                type="button"
-                onClick={() => handlePrintTicket(b.id)}
-                disabled={printingTicketId === b.id}
+              <h3 style={{ fontSize: "1.1rem", marginBottom: "1rem", fontWeight: 600 }}>
+                🔍 Filtros de búsqueda
+              </h3>
+              <div
                 style={{
-                  marginTop: "0.75rem",
-                  padding: "0.5rem 0.9rem",
-                  borderRadius: "0.5rem",
-                  border: "1px solid #e5e7eb",
-                  background:
-                    printingTicketId === b.id ? "#4b556355" : "#111827",
-                  color: "#f9fafb",
-                  fontSize: "0.85rem",
-                  cursor:
-                    printingTicketId === b.id ? "default" : "pointer",
+                  display: "grid",
+                  gap: "1rem",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
                 }}
               >
-                {printingTicketId === b.id
-                  ? "Imprimiendo..."
-                  : "Imprimir ticket"}
-              </button>
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                    Fecha
+                  </label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.5rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                    Método de pago
+                  </label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.5rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                    }}
+                  >
+                    <option value="">(Todos)</option>
+                    <option value="cash">Efectivo</option>
+                    <option value="credit_card">Tarjeta de crédito</option>
+                    <option value="debit_card">Tarjeta de débito</option>
+                    <option value="transfer">Transferencia</option>
+                    <option value="digital_wallet">Billetera digital</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                    Estado
+                  </label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.5rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                    }}
+                  >
+                    <option value="">(Todos)</option>
+                    <option value="paid">Pagado</option>
+                    <option value="pending">Pendiente</option>
+                    <option value="cancelled">Cancelado</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                    Límite
+                  </label>
+                  <input
+                    type="number"
+                    value={limit}
+                    onChange={(e) => setLimit(Number(e.target.value))}
+                    min={1}
+                    style={{
+                      width: "100%",
+                      padding: "0.5rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                    Página
+                  </label>
+                  <input
+                    type="number"
+                    value={page}
+                    onChange={(e) => setPage(Number(e.target.value))}
+                    min={1}
+                    style={{
+                      width: "100%",
+                      padding: "0.5rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", alignItems: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={handleFetch}
+                    disabled={loading}
+                    style={{
+                      width: "100%",
+                      padding: "0.625rem 1.25rem",
+                      background: loading ? "#3b82f655" : "#3b82f6",
+                      borderRadius: "0.5rem",
+                      fontWeight: 600,
+                      border: "none",
+                      color: "white",
+                      cursor: loading ? "not-allowed" : "pointer",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    {loading ? "Buscando..." : "🔍 Buscar"}
+                  </button>
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
+
+            {errorMsg && (
+              <div
+                style={{
+                  padding: "0.75rem 1rem",
+                  borderRadius: "0.5rem",
+                  background: "#7f1d1d",
+                  border: "1px solid #dc2626",
+                  color: "#fecaca",
+                  marginBottom: "1rem",
+                }}
+              >
+                ❌ {errorMsg}
+              </div>
+            )}
+
+            {/* LISTADO DE FACTURAS */}
+            {loading ? (
+              <p style={{ color: "#9ca3af", textAlign: "center", padding: "2rem" }}>
+                Cargando facturas...
+              </p>
+            ) : bills.length === 0 ? (
+              <div
+                style={{
+                  padding: "3rem",
+                  textAlign: "center",
+                  background: "#1e293b",
+                  borderRadius: "0.75rem",
+                  border: "1px solid #334155",
+                }}
+              >
+                <p style={{ color: "#9ca3af", fontSize: "1rem", marginBottom: "0.5rem" }}>
+                  📭 No se encontraron facturas
+                </p>
+                <p style={{ color: "#64748b", fontSize: "0.9rem" }}>
+                  Ajustá los filtros o creá una nueva venta directa
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: "1rem" }}>
+                {bills.map((b) => (
+                  <div
+                    key={b.id}
+                    style={{
+                      background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+                      padding: "1.5rem",
+                      borderRadius: "0.75rem",
+                      border: "1px solid #334155",
+                      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <div>
+                        <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                          Factura #{b.id.slice(0, 8)}
+                        </h3>
+                        <p style={{ color: "#9ca3af", fontSize: "0.85rem" }}>
+                          {new Date(b.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <div
+                        style={{
+                          padding: "0.375rem 0.75rem",
+                          borderRadius: "999px",
+                          background:
+                            b.status === "paid"
+                              ? "#14532d"
+                              : b.status === "pending"
+                              ? "#7c2d12"
+                              : "#7f1d1d",
+                          color:
+                            b.status === "paid"
+                              ? "#86efac"
+                              : b.status === "pending"
+                              ? "#fed7aa"
+                              : "#fecaca",
+                          fontSize: "0.8rem",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {b.status === "paid" ? "✅ Pagado" : b.status === "pending" ? "⏳ Pendiente" : "❌ Cancelado"}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                        gap: "1rem",
+                        marginBottom: "1rem",
+                        padding: "1rem",
+                        background: "#020617",
+                        borderRadius: "0.5rem",
+                      }}
+                    >
+                      <div>
+                        <p style={{ color: "#9ca3af", fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+                          Orden ID
+                        </p>
+                        <p style={{ fontSize: "0.9rem", fontWeight: 500 }}>
+                          {b.orderId.slice(0, 8)}...
+                        </p>
+                      </div>
+                      <div>
+                        <p style={{ color: "#9ca3af", fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+                          Mesa
+                        </p>
+                        <p style={{ fontSize: "0.9rem", fontWeight: 500 }}>
+                          #{b.tableNumber}
+                        </p>
+                      </div>
+                      <div>
+                        <p style={{ color: "#9ca3af", fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+                          Método de pago
+                        </p>
+                        <p style={{ fontSize: "0.9rem", fontWeight: 500 }}>
+                          {b.paymentMethod}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "1rem",
+                        background: "#1e293b",
+                        borderRadius: "0.5rem",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+                        <div>
+                          <p style={{ color: "#9ca3af", fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+                            Subtotal
+                          </p>
+                          <p style={{ fontSize: "1rem", fontWeight: 500 }}>${b.subtotal.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p style={{ color: "#9ca3af", fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+                            Impuestos
+                          </p>
+                          <p style={{ fontSize: "1rem", fontWeight: 500 }}>${b.tax.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p style={{ color: "#9ca3af", fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+                            Propina
+                          </p>
+                          <p style={{ fontSize: "1rem", fontWeight: 500 }}>${b.tip.toFixed(2)}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <p style={{ color: "#9ca3af", fontSize: "0.9rem", marginBottom: "0.25rem" }}>
+                          Total
+                        </p>
+                        <p style={{ fontSize: "1.5rem", fontWeight: 700, color: "#22c55e" }}>
+                          ${b.total.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handlePrintTicket(b.id)}
+                      disabled={printingTicketId === b.id}
+                      style={{
+                        width: "100%",
+                        padding: "0.75rem 1rem",
+                        borderRadius: "0.5rem",
+                        border: "1px solid #3b82f6",
+                        background: printingTicketId === b.id ? "#1d4ed855" : "#1d4ed833",
+                        color: "#bfdbfe",
+                        fontSize: "0.9rem",
+                        fontWeight: 500,
+                        cursor: printingTicketId === b.id ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {printingTicketId === b.id ? "⏳ Imprimiendo..." : "🖨️ Imprimir Ticket"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );

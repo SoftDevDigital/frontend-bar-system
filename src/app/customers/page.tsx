@@ -293,9 +293,9 @@ export default function CustomersPage() {
       // ---- Historial de reservas ----
       if (
         reservationsRes.success &&
-        Array.isArray(reservationsRes.data?.data)
+        Array.isArray(reservationsRes.data)
       ) {
-        setCustomerReservations(reservationsRes.data.data);
+        setCustomerReservations(reservationsRes.data);
       } else {
         setReservationsError(
           reservationsRes.message ||

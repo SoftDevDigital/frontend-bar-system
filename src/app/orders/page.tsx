@@ -16,11 +16,10 @@ import {
   getOrderById,
   createBill,
   type PaymentMethod,
-  getBillTicket, // 👈 NUEVO
-  type BillTicket, // 👈 NUEVO
+  getBillTicket,
+  type BillTicket,
 } from "../lib/api";
 
-// mismo tipo que en TopNav
 type UserRole = "admin" | "employee" | "customer" | string | null;
 
 type OrderType = "dine_in" | "takeaway" | "delivery";
@@ -173,11 +172,16 @@ export default function OrdersPage() {
 
   const isStaff = role === "admin" || role === "employee";
 
-  // 🔹 Helper para formatear el total de una orden sin romper si viene undefined
-  const formatOrderTotal = (o: Order) =>
-    typeof o.total === "number" && !Number.isNaN(o.total)
-      ? o.total.toFixed(2)
+  // 👉 Estado para tabs/secciones
+  const [activeTab, setActiveTab] = useState<"create" | "manage">("create");
+
+  // 🔹 Helper para formatear el total de una orden
+  const formatOrderTotal = (o: Order) => {
+    const total = (o as any).totalAmount ?? (o as any).total ?? 0;
+    return typeof total === "number" && !Number.isNaN(total)
+      ? total.toFixed(2)
       : "0.00";
+  };
 
   /* ====================================================
      VISTA CLIENTE: MIS PEDIDOS (customer)
@@ -229,20 +233,15 @@ export default function OrdersPage() {
   const [date, setDate] = useState("");
   const [limit, setLimit] = useState(20);
   const [page, setPage] = useState(1);
-
-  // 👉 NUEVOS FILTROS: tipo de orden y customerId
   const [orderTypeFilter, setOrderTypeFilter] = useState<OrderType | "">("");
   const [customerIdFilter, setCustomerIdFilter] = useState("");
 
-  // 👉 tablas cargadas para el select
+  // 👉 tablas y productos cargados
   const [tables, setTables] = useState<Table[]>([]);
   const [loadingTables, setLoadingTables] = useState(false);
-
-  // 👉 productos del menú
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
-  // 👉 carga de mesas
   useEffect(() => {
     async function fetchTables() {
       setLoadingTables(true);
@@ -259,7 +258,6 @@ export default function OrdersPage() {
     fetchTables();
   }, []);
 
-  // 👉 carga de productos del menú (para armar items de la orden)
   useEffect(() => {
     async function fetchProducts() {
       setLoadingProducts(true);
@@ -292,7 +290,6 @@ export default function OrdersPage() {
         date: date || undefined,
         limit,
         page,
-        // nuevos filtros
         orderType: orderTypeFilter || undefined,
         customerId: customerIdFilter.trim() || undefined,
       });
@@ -319,7 +316,6 @@ export default function OrdersPage() {
   const [createOrderType, setCreateOrderType] = useState<OrderType>("dine_in");
   const [createOrderTableId, setCreateOrderTableId] = useState("");
   const [createCustomerId, setCreateCustomerId] = useState("");
-
   const [createItems, setCreateItems] = useState<OrderItemInput[]>([
     { productId: "", quantity: 1, specialInstructions: "" },
   ]);
@@ -357,7 +353,6 @@ export default function OrdersPage() {
     setCreateError("");
     setCreateSuccess("");
 
-    // Validaciones básicas
     if (createOrderType === "dine_in" && !createOrderTableId) {
       setCreateError(
         "Seleccioná una mesa para órdenes dentro del local (dine_in)."
@@ -389,7 +384,6 @@ export default function OrdersPage() {
         ? { tableId: createOrderTableId }
         : {}),
       ...(createCustomerId.trim() ? { customerId: createCustomerId.trim() } : {}),
-      // Podrías agregar notes, discountAmount, tipAmount, waiterId si los necesitás
     };
 
     try {
@@ -398,20 +392,19 @@ export default function OrdersPage() {
 
       if (res.success && res.data) {
         setCreateSuccess(
-          `Orden creada correctamente. N° de orden: ${
+          `✅ Orden creada correctamente. N° de orden: ${
             res.data.orderNumber ?? res.data.id
           }`
         );
         setCreateError("");
 
-        // Limpio algunos campos del form (no todo para que sea cómodo)
         setCreateOrderType("dine_in");
         setCreateOrderTableId("");
         setCreateCustomerId("");
         setCreateItems([{ productId: "", quantity: 1, specialInstructions: "" }]);
 
-        // Refresco el listado de pedidos
         handleFetch();
+        setActiveTab("manage");
       } else {
         setCreateError(
           res.message || "No se pudo crear la orden. Revisá los datos."
@@ -425,7 +418,7 @@ export default function OrdersPage() {
   };
 
   // ======================
-  //   EDITAR ITEMS ORDEN (PATCH /orders/:id/items)
+  //   EDITAR ITEMS ORDEN
   // ======================
   const [editOrderId, setEditOrderId] = useState<string | null>(null);
   const [editItems, setEditItems] = useState<OrderItemInput[]>([
@@ -470,9 +463,7 @@ export default function OrdersPage() {
     setEditSuccess("");
   };
 
-  const handleUpdateOrderItems = async (
-    e: React.FormEvent<HTMLFormElement>
-  ) => {
+  const handleUpdateOrderItems = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editOrderId) return;
 
@@ -483,7 +474,7 @@ export default function OrdersPage() {
       .filter((it) => it.productId && it.quantity > 0)
       .map((it) => ({
         productId: it.productId,
-        quantity: it.quantity, // 👈 cantidad FINAL
+        quantity: it.quantity,
       }));
 
     if (!filteredItems.length) {
@@ -501,7 +492,7 @@ export default function OrdersPage() {
       });
 
       if (res.success && res.data) {
-        setEditSuccess("Items actualizados correctamente.");
+        setEditSuccess("✅ Items actualizados correctamente.");
         setEditError("");
         await handleFetch();
       } else {
@@ -517,11 +508,9 @@ export default function OrdersPage() {
   };
 
   // ======================
-  //   QUITAR ITEM (DELETE /orders/:id/items/:itemId)
+  //   QUITAR ITEM
   // ======================
-  const [removeItemLoadingId, setRemoveItemLoadingId] = useState<string | null>(
-    null
-  );
+  const [removeItemLoadingId, setRemoveItemLoadingId] = useState<string | null>(null);
   const [removeItemError, setRemoveItemError] = useState("");
 
   const handleRemoveItemFromOrder = async (orderId: string, itemId: string) => {
@@ -547,45 +536,10 @@ export default function OrdersPage() {
   };
 
   // ======================
-  //   VER ORDEN (GET /orders/:id)
-  // ======================
-  const [viewOrderId, setViewOrderId] = useState("");
-  const [viewOrder, setViewOrder] = useState<Order | null>(null);
-  const [viewLoading, setViewLoading] = useState(false);
-  const [viewError, setViewError] = useState("");
-
-  const handleViewOrder = async () => {
-    setViewError("");
-    setViewOrder(null);
-
-    const id = viewOrderId.trim();
-    if (!id) {
-      setViewError("Seleccioná una orden del listado.");
-      return;
-    }
-
-    try {
-      setViewLoading(true);
-      const res = await getOrderById(id);
-
-      if (res.success && res.data) {
-        setViewOrder(res.data);
-      } else {
-        setViewError(res.message || "No se encontró la orden.");
-      }
-    } catch (err: any) {
-      setViewError(err?.message || "Error inesperado al obtener la orden.");
-    } finally {
-      setViewLoading(false);
-    }
-  };
-
-  // ======================
-  //   CERRAR CUENTA / CREAR FACTURA (POST /bills)
+  //   CERRAR CUENTA / CREAR FACTURA
   // ======================
   const [billOrderId, setBillOrderId] = useState("");
-  const [billPaymentMethod, setBillPaymentMethod] =
-    useState<PaymentMethod>("cash");
+  const [billPaymentMethod, setBillPaymentMethod] = useState<PaymentMethod>("cash");
   const [billPaidAmount, setBillPaidAmount] = useState<string>("");
   const [billDiscountAmount, setBillDiscountAmount] = useState<string>("");
   const [billTipAmount, setBillTipAmount] = useState<string>("");
@@ -594,7 +548,6 @@ export default function OrdersPage() {
   const [billError, setBillError] = useState("");
   const [billSuccess, setBillSuccess] = useState("");
 
-  // Prefill cashierId con el userId (si existe)
   useEffect(() => {
     if (userId && !billCashierId) {
       setBillCashierId(userId);
@@ -619,10 +572,11 @@ export default function OrdersPage() {
       return;
     }
 
-    // 👇 total seguro, por si viene undefined
     const orderTotal =
-      typeof order.total === "number" && !Number.isNaN(order.total)
-        ? order.total
+      typeof (order as any).totalAmount === "number" && !Number.isNaN((order as any).totalAmount)
+        ? (order as any).totalAmount
+        : typeof (order as any).total === "number" && !Number.isNaN((order as any).total)
+        ? (order as any).total
         : 0;
 
     if (!billPaidAmount.trim()) {
@@ -636,14 +590,11 @@ export default function OrdersPage() {
       return;
     }
 
-    // Validación: paidAmount >= totalAmount (usamos orderTotal)
     if (paid < orderTotal) {
       setBillError(
         `El monto pagado ($${paid.toFixed(
           2
-        )}) no puede ser menor al total de la orden ($${orderTotal.toFixed(
-          2
-        )}).`
+        )}) no puede ser menor al total de la orden ($${orderTotal.toFixed(2)}).`
       );
       return;
     }
@@ -676,38 +627,24 @@ export default function OrdersPage() {
       const bill = res.data;
 
       setBillSuccess(
-        `Factura creada (N° ${bill.billNumber}). Total: $${bill.totalAmount.toFixed(
+        `✅ Factura creada (N° ${bill.billNumber}). Total: $${bill.totalAmount.toFixed(
           2
         )}. Pagado: $${bill.paidAmount.toFixed(
           2
-        )}. Vuelto: $${bill.changeAmount.toFixed(2)}.`
+        )}. Vuelto: $${bill.changeAmount?.toFixed(2) ?? "0.00"}.`
       );
 
-      // 👉 NUEVO: obtener ticket e imprimir
       try {
         const ticketRes = await getBillTicket(bill.id);
         if (ticketRes.success && ticketRes.data) {
           printBillTicket(ticketRes.data);
-        } else {
-          console.error(
-            "No se pudo obtener el ticket para imprimir:",
-            ticketRes.message
-          );
         }
       } catch (e) {
         console.error("Error al obtener/imprimir ticket:", e);
       }
 
-      // Efecto automático en frontend: sacamos la orden cerrada del listado
       setOrders((prev) => prev.filter((o) => o.id !== id));
-
-      // Si justo la estábamos viendo, limpiamos
-      if (viewOrderId === id) {
-        setViewOrderId("");
-        setViewOrder(null);
-      }
-
-      // Reseteo algunos campos
+      setBillOrderId("");
       setBillPaidAmount("");
       setBillDiscountAmount("");
       setBillTipAmount("");
@@ -725,11 +662,11 @@ export default function OrdersPage() {
         style={{
           padding: "2rem",
           color: "white",
-          background: "#0f172a",
+          background: "#020617",
           minHeight: "100vh",
         }}
       >
-        <h1 style={{ fontSize: "2rem" }}>🧾 Pedidos (Orders)</h1>
+        <h1 style={{ fontSize: "2rem" }}>🧾 Pedidos</h1>
         <p style={{ color: "#9ca3af" }}>Cargando permisos...</p>
       </main>
     );
@@ -742,134 +679,136 @@ export default function OrdersPage() {
         style={{
           padding: "1.5rem",
           color: "white",
-          background: "#0f172a",
+          background: "#020617",
           minHeight: "100vh",
         }}
       >
-        <h1 style={{ fontSize: "1.6rem", marginBottom: "0.5rem" }}>
-          🧾 Mis pedidos
-        </h1>
-        <p
-          style={{
-            color: "#9ca3af",
-            fontSize: "0.9rem",
-            marginBottom: "1rem",
-          }}
-        >
-          Aquí podés ver el historial de tus pedidos realizados en el bar.
-        </p>
-
-        <button
-          type="button"
-          onClick={handleFetchCustomerOrders}
-          disabled={customerOrdersLoading}
-          style={{
-            padding: "0.6rem 1rem",
-            borderRadius: "0.75rem",
-            border: "none",
-            background: customerOrdersLoading ? "#3b82f655" : "#3b82f6",
-            color: "white",
-            fontWeight: 600,
-            cursor: customerOrdersLoading ? "default" : "pointer",
-            marginBottom: "1rem",
-            fontSize: "0.9rem",
-          }}
-        >
-          {customerOrdersLoading ? "Actualizando..." : "Actualizar lista"}
-        </button>
-
-        {customerOrdersError && (
+        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+          <h1 style={{ fontSize: "1.6rem", marginBottom: "0.5rem" }}>
+            🧾 Mis pedidos
+          </h1>
           <p
             style={{
-              color: "#f87171",
-              fontSize: "0.85rem",
-              marginBottom: "0.75rem",
+              color: "#9ca3af",
+              fontSize: "0.9rem",
+              marginBottom: "1rem",
             }}
           >
-            {customerOrdersError}
+            Aquí podés ver el historial de tus pedidos realizados en el bar.
           </p>
-        )}
 
-        {!customerOrdersLoading && customerOrders.length === 0 && !customerOrdersError && (
-          <p style={{ color: "#9ca3af", fontSize: "0.9rem" }}>
-            Todavía no tenés pedidos registrados.
-          </p>
-        )}
+          <button
+            type="button"
+            onClick={handleFetchCustomerOrders}
+            disabled={customerOrdersLoading}
+            style={{
+              padding: "0.6rem 1rem",
+              borderRadius: "0.75rem",
+              border: "none",
+              background: customerOrdersLoading ? "#3b82f655" : "#3b82f6",
+              color: "white",
+              fontWeight: 600,
+              cursor: customerOrdersLoading ? "default" : "pointer",
+              marginBottom: "1rem",
+              fontSize: "0.9rem",
+            }}
+          >
+            {customerOrdersLoading ? "Actualizando..." : "Actualizar lista"}
+          </button>
 
-        <div style={{ display: "grid", gap: "1rem" }}>
-          {customerOrders.map((o) => (
-            <div
-              key={o.id}
+          {customerOrdersError && (
+            <p
               style={{
-                background: "#020617",
-                padding: "1rem",
-                borderRadius: "0.75rem",
-                border: "1px solid #1f2937",
+                color: "#f87171",
+                fontSize: "0.85rem",
+                marginBottom: "0.75rem",
               }}
             >
-              <h3 style={{ marginBottom: "0.25rem" }}>
-                Pedido #{o.orderNumber ?? o.id}
-              </h3>
-              <p
+              {customerOrdersError}
+            </p>
+          )}
+
+          {!customerOrdersLoading && customerOrders.length === 0 && !customerOrdersError && (
+            <p style={{ color: "#9ca3af", fontSize: "0.9rem" }}>
+              Todavía no tenés pedidos registrados.
+            </p>
+          )}
+
+          <div style={{ display: "grid", gap: "1rem" }}>
+            {customerOrders.map((o) => (
+              <div
+                key={o.id}
                 style={{
-                  fontSize: "0.85rem",
-                  color: "#9ca3af",
-                  marginBottom: "0.5rem",
+                  background: "#1e293b",
+                  padding: "1rem",
+                  borderRadius: "0.75rem",
+                  border: "1px solid #334155",
                 }}
               >
-                Realizado el{" "}
-                {o.createdAt
-                  ? new Date(o.createdAt).toLocaleString()
-                  : "—"}
-              </p>
-
-              <p style={{ fontSize: "0.9rem", marginBottom: "0.2rem" }}>
-                <strong>Estado:</strong> {o.status}
-              </p>
-              <p style={{ fontSize: "0.9rem", marginBottom: "0.2rem" }}>
-                <strong>Tipo:</strong>{" "}
-                {o.orderType === "dine_in"
-                  ? "Dentro del local"
-                  : o.orderType === "takeaway"
-                  ? "Para llevar"
-                  : o.orderType === "delivery"
-                  ? "Delivery"
-                  : o.orderType ?? "—"}
-              </p>
-              <p style={{ fontSize: "0.9rem", marginBottom: "0.2rem" }}>
-                <strong>Mesa:</strong>{" "}
-                {o.tableNumber ? `#${o.tableNumber}` : "—"}
-              </p>
-              <p style={{ fontSize: "0.9rem", marginBottom: "0.4rem" }}>
-                <strong>Total:</strong> ${formatOrderTotal(o)}
-              </p>
-
-              <div>
+                <h3 style={{ marginBottom: "0.25rem" }}>
+                  Pedido #{o.orderNumber ?? o.id}
+                </h3>
                 <p
                   style={{
-                    fontSize: "0.9rem",
-                    marginBottom: "0.25rem",
-                    fontWeight: 600,
-                  }}
-                >
-                  Items:
-                </p>
-                <ul
-                  style={{
-                    paddingLeft: "1.1rem",
                     fontSize: "0.85rem",
-                    color: "#e5e7eb",
+                    color: "#9ca3af",
+                    marginBottom: "0.5rem",
                   }}
                 >
-                  {o.items.map((it, idx) => (
-                    <li key={idx}>
-                      {it.productName} x{it.quantity} — ${it.subtotal}
-                    </li>
-                  ))}
-                </ul>
+                  Realizado el{" "}
+                  {o.createdAt
+                    ? new Date(o.createdAt).toLocaleString()
+                    : "—"}
+                </p>
+
+                <p style={{ fontSize: "0.9rem", marginBottom: "0.2rem" }}>
+                  <strong>Estado:</strong> {o.status}
+                </p>
+                <p style={{ fontSize: "0.9rem", marginBottom: "0.2rem" }}>
+                  <strong>Tipo:</strong>{" "}
+                  {o.orderType === "dine_in"
+                    ? "Dentro del local"
+                    : o.orderType === "takeaway"
+                    ? "Para llevar"
+                    : o.orderType === "delivery"
+                    ? "Delivery"
+                    : o.orderType ?? "—"}
+                </p>
+                <p style={{ fontSize: "0.9rem", marginBottom: "0.2rem" }}>
+                  <strong>Mesa:</strong>{" "}
+                  {(o as any).tableNumber ? `#${(o as any).tableNumber}` : "—"}
+                </p>
+                <p style={{ fontSize: "0.9rem", marginBottom: "0.4rem" }}>
+                  <strong>Total:</strong> ${formatOrderTotal(o)}
+                </p>
+
+                <div>
+                  <p
+                    style={{
+                      fontSize: "0.9rem",
+                      marginBottom: "0.25rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Items:
+                  </p>
+                  <ul
+                    style={{
+                      paddingLeft: "1.1rem",
+                      fontSize: "0.85rem",
+                      color: "#e5e7eb",
+                    }}
+                  >
+                    {o.items.map((it, idx) => (
+                      <li key={idx}>
+                        {it.productName} x{it.quantity} — ${it.subtotal}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </main>
     );
@@ -882,11 +821,11 @@ export default function OrdersPage() {
         style={{
           padding: "2rem",
           color: "white",
-          background: "#0f172a",
+          background: "#020617",
           minHeight: "100vh",
         }}
       >
-        <h1 style={{ fontSize: "2rem" }}>🧾 Pedidos (Orders)</h1>
+        <h1 style={{ fontSize: "2rem" }}>🧾 Pedidos</h1>
         <p style={{ color: "#f87171", maxWidth: "520px" }}>
           No tenés permisos para ver esta página.
         </p>
@@ -900,1021 +839,284 @@ export default function OrdersPage() {
       style={{
         padding: "2rem",
         color: "white",
-        background: "#0f172a",
+        background: "#020617",
         minHeight: "100vh",
       }}
     >
-      <h1 style={{ fontSize: "2rem", marginBottom: "1rem" }}>
-        🧾 Pedidos (Orders)
-      </h1>
-
-      {/* =========================
-          CREAR NUEVA ORDEN
-      ========================== */}
-      <section
-        style={{
-          background: "#020617",
-          padding: "1rem",
-          borderRadius: "0.75rem",
-          marginBottom: "1.5rem",
-          border: "1px solid #334155",
-        }}
-      >
-        <h2 style={{ fontSize: "1.1rem", marginBottom: "0.75rem" }}>
-          Crear nueva orden
-        </h2>
-
-        {createError && (
-          <p
-            style={{
-              color: "#f87171",
-              marginBottom: "0.5rem",
-              fontSize: "0.9rem",
-            }}
-          >
-            {createError}
+      <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
+        {/* HEADER */}
+        <div style={{ marginBottom: "2rem" }}>
+          <h1 style={{ fontSize: "2.25rem", marginBottom: "0.5rem", fontWeight: 700 }}>
+            🧾 Gestión de Pedidos
+          </h1>
+          <p style={{ color: "#9ca3af", fontSize: "1rem" }}>
+            Creá y gestioná órdenes, luego cerrá la cuenta para facturar
           </p>
-        )}
-        {createSuccess && (
-          <p
-            style={{
-              color: "#4ade80",
-              marginBottom: "0.5rem",
-              fontSize: "0.9rem",
-            }}
-          >
-            {createSuccess}
-          </p>
-        )}
-
-        <form
-          onSubmit={handleCreateOrder}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "0.75rem",
-            marginBottom: "1rem",
-          }}
-        >
-          {/* Tipo de orden */}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <label style={{ marginBottom: "0.25rem", fontSize: "0.85rem" }}>
-              Tipo de orden
-            </label>
-            <select
-              value={createOrderType}
-              onChange={(e) => setCreateOrderType(e.target.value as OrderType)}
-              style={{
-                padding: "0.45rem 0.6rem",
-                borderRadius: "0.5rem",
-                border: "1px solid #475569",
-                background: "#020617",
-                color: "white",
-              }}
-            >
-              <option value="dine_in">Dentro del local (dine_in)</option>
-              <option value="takeaway">Para llevar (takeaway)</option>
-              <option value="delivery">Delivery</option>
-            </select>
-          </div>
-
-          {/* Mesa */}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <label style={{ marginBottom: "0.25rem", fontSize: "0.85rem" }}>
-              Mesa
-              {createOrderType === "dine_in" && " (requerido)"}
-            </label>
-            <select
-              value={createOrderTableId}
-              onChange={(e) => setCreateOrderTableId(e.target.value)}
-              disabled={loadingTables || createOrderType !== "dine_in"}
-              style={{
-                padding: "0.45rem 0.6rem",
-                borderRadius: "0.5rem",
-                border: "1px solid #475569",
-                background:
-                  createOrderType === "dine_in" ? "#020617" : "#02061766",
-                color: "white",
-              }}
-            >
-              <option value="">
-                {createOrderType === "dine_in"
-                  ? "(Seleccioná una mesa)"
-                  : "(No aplica)"}
-              </option>
-              {tables.map((t) => (
-                <option key={t.id} value={t.id}>
-                  Mesa #{t.number} — {t.location}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* CustomerId opcional */}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <label style={{ marginBottom: "0.25rem", fontSize: "0.85rem" }}>
-              ID Cliente (opcional)
-            </label>
-            <input
-              type="text"
-              value={createCustomerId}
-              onChange={(e) => setCreateCustomerId(e.target.value)}
-              placeholder="customer-uuid"
-              style={{
-                padding: "0.45rem 0.6rem",
-                borderRadius: "0.5rem",
-                border: "1px solid #475569",
-                background: "#020617",
-                color: "white",
-              }}
-            />
-          </div>
-
-          {/* Botón submit */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-end",
-              justifyContent: "flex-start",
-            }}
-          >
-            <button
-              type="submit"
-              disabled={creating}
-              style={{
-                padding: "0.7rem 1.2rem",
-                background: "#22c55e",
-                borderRadius: "0.6rem",
-                border: "none",
-                fontWeight: "bold",
-                cursor: creating ? "default" : "pointer",
-              }}
-            >
-              {creating ? "Creando..." : "Crear orden"}
-            </button>
-          </div>
-        </form>
-
-        {/* Items de la orden */}
-        <div>
-          <h3
-            style={{
-              fontSize: "0.95rem",
-              marginBottom: "0.4rem",
-              fontWeight: 600,
-            }}
-          >
-            Items de la orden
-          </h3>
-          {loadingProducts && (
-            <p style={{ color: "#9ca3af", fontSize: "0.85rem" }}>
-              Cargando productos del menú...
-            </p>
-          )}
-
-          {createItems.map((item, index) => (
-            <div
-              key={index}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "2fr minmax(80px,0.8fr) 2fr auto",
-                gap: "0.5rem",
-                marginBottom: "0.5rem",
-                alignItems: "center",
-              }}
-            >
-              {/* Producto */}
-              <select
-                value={item.productId}
-                onChange={(e) =>
-                  handleChangeItem(index, "productId", e.target.value)
-                }
-                style={{
-                  padding: "0.45rem 0.6rem",
-                  borderRadius: "0.5rem",
-                  border: "1px solid #475569",
-                  background: "#020617",
-                  color: "white",
-                  fontSize: "0.85rem",
-                }}
-              >
-                <option value="">Seleccionar producto...</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} — ${p.price.toFixed(2)}
-                  </option>
-                ))}
-              </select>
-
-              {/* Cantidad */}
-              <input
-                type="number"
-                min={1}
-                value={item.quantity}
-                onChange={(e) =>
-                  handleChangeItem(index, "quantity", e.target.value)
-                }
-                style={{
-                  padding: "0.45rem 0.6rem",
-                  borderRadius: "0.5rem",
-                  border: "1px solid #475569",
-                  background: "#020617",
-                  color: "white",
-                  fontSize: "0.85rem",
-                  width: "100%",
-                }}
-              />
-
-              {/* Instrucciones especiales */}
-              <input
-                type="text"
-                value={item.specialInstructions}
-                onChange={(e) =>
-                  handleChangeItem(
-                    index,
-                    "specialInstructions",
-                    e.target.value
-                  )
-                }
-                placeholder="Instrucciones (ej: sin cebolla)"
-                style={{
-                  padding: "0.45rem 0.6rem",
-                  borderRadius: "0.5rem",
-                  border: "1px solid #475569",
-                  background: "#020617",
-                  color: "white",
-                  fontSize: "0.85rem",
-                  width: "100%",
-                }}
-              />
-
-              {/* Borrar fila */}
-              <button
-                type="button"
-                onClick={() => handleRemoveItemRow(index)}
-                disabled={createItems.length === 1}
-                style={{
-                  padding: "0.35rem 0.7rem",
-                  borderRadius: "999px",
-                  border: "1px solid #f97316",
-                  background: "#7c2d1233",
-                  color: "#fed7aa",
-                  fontSize: "0.8rem",
-                  cursor: createItems.length === 1 ? "default" : "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Eliminar
-              </button>
-            </div>
-          ))}
-
-          <button
-            type="button"
-            onClick={handleAddItemRow}
-            style={{
-              marginTop: "0.5rem",
-              padding: "0.4rem 0.9rem",
-              borderRadius: "999px",
-              border: "1px solid #3b82f6",
-              background: "#1d4ed833",
-              color: "#bfdbfe",
-              fontSize: "0.8rem",
-              cursor: "pointer",
-            }}
-          >
-            + Agregar otro producto
-          </button>
-        </div>
-      </section>
-
-      {/* FILTROS */}
-      <div
-        style={{
-          background: "#1e293b",
-          padding: "1rem",
-          borderRadius: "0.75rem",
-          marginBottom: "1.5rem",
-          display: "grid",
-          gap: "1rem",
-          gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-        }}
-      >
-        {/* STATUS */}
-        <div>
-          <label>Estado</label>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem" }}
-          >
-            <option value="">(Todos)</option>
-            <option value="pending">pending</option>
-            <option value="preparing">preparing</option>
-            <option value="delivered">delivered</option>
-            <option value="cancelled">cancelled</option>
-          </select>
         </div>
 
-        {/* SELECT DE MESAS */}
-        <div>
-          <label>ID Mesa (tableId)</label>
-          <select
-            value={tableId}
-            onChange={(e) => setTableId(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem" }}
-            disabled={loadingTables}
-          >
-            <option value="">(Todas)</option>
-            {tables.map((t) => (
-              <option key={t.id} value={t.id}>
-                Mesa #{t.number} — {t.location}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* NUEVO: TIPO DE ORDEN */}
-        <div>
-          <label>Tipo de orden</label>
-          <select
-            value={orderTypeFilter}
-            onChange={(e) =>
-              setOrderTypeFilter(e.target.value as OrderType | "")
-            }
-            style={{ width: "100%", padding: "0.4rem" }}
-          >
-            <option value="">(Todas)</option>
-            <option value="dine_in">Dentro del local (dine_in)</option>
-            <option value="takeaway">Para llevar (takeaway)</option>
-            <option value="delivery">Delivery</option>
-          </select>
-        </div>
-
-        {/* NUEVO: FILTRO POR CUSTOMER ID */}
-        <div>
-          <label>Customer ID</label>
-          <input
-            type="text"
-            value={customerIdFilter}
-            onChange={(e) => setCustomerIdFilter(e.target.value)}
-            placeholder="Filtrar por cliente"
-            style={{ width: "100%", padding: "0.4rem" }}
-          />
-        </div>
-
-        {/* FECHA DATEPICKER */}
-        <div>
-          <label>Fecha</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            style={{ width: "100%", padding: "0.4rem" }}
-          />
-        </div>
-
-        {/* LIMIT */}
-        <div>
-          <label>Limit</label>
-          <input
-            type="number"
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
-            style={{ width: "100%", padding: "0.4rem" }}
-          />
-        </div>
-
-        {/* PAGE */}
-        <div>
-          <label>Page</label>
-          <input
-            type="number"
-            value={page}
-            onChange={(e) => setPage(Number(e.target.value))}
-            style={{ width: "100%", padding: "0.4rem" }}
-          />
-        </div>
-
-        {/* BOTÓN */}
-        <button
-          onClick={handleFetch}
-          style={{
-            padding: "0.8rem",
-            background: "#3b82f6",
-            borderRadius: "0.6rem",
-            fontWeight: "bold",
-          }}
-        >
-          {loading ? "Buscando..." : "Buscar pedidos"}
-        </button>
-      </div>
-
-      {/* =========================
-          VER ORDEN POR ID (GET /orders/:id) - SELECT
-      ========================== */}
-      <section
-        style={{
-          background: "#020617",
-          padding: "1rem",
-          borderRadius: "0.75rem",
-          marginBottom: "1.5rem",
-          border: "1px solid #334155",
-        }}
-      >
-        <h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
-          Ver orden (GET /orders/:id)
-        </h2>
-
+        {/* TABS */}
         <div
           style={{
             display: "flex",
-            flexWrap: "wrap",
-            gap: "0.75rem",
-            alignItems: "center",
-            marginBottom: "0.5rem",
+            gap: "0.5rem",
+            marginBottom: "2rem",
+            borderBottom: "2px solid #334155",
           }}
         >
-          <div style={{ flex: "1 1 260px" }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "0.25rem",
-                fontSize: "0.85rem",
-              }}
-            >
-              Orden
-            </label>
-            <select
-              value={viewOrderId}
-              onChange={(e) => setViewOrderId(e.target.value)}
-              disabled={orders.length === 0}
-              style={{
-                width: "100%",
-                padding: "0.45rem 0.6rem",
-                borderRadius: "0.5rem",
-                border: "1px solid #475569",
-                background: "#0f172a",
-                color: "white",
-                fontSize: "0.9rem",
-              }}
-            >
-              <option value="">
-                {orders.length === 0
-                  ? "No hay pedidos. Usá los filtros de arriba."
-                  : "Seleccionar orden..."}
-              </option>
-              {orders.map((o) => (
-                <option key={o.id} value={o.id}>
-                  Pedido #{o.orderNumber ?? o.id} —{" "}
-                  {o.tableNumber ? `Mesa #${o.tableNumber}` : "Sin mesa"} —{" "}
-                  {o.status}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <button
             type="button"
-            onClick={handleViewOrder}
-            disabled={viewLoading || orders.length === 0}
+            onClick={() => setActiveTab("create")}
             style={{
-              padding: "0.7rem 1.1rem",
-              borderRadius: "0.6rem",
+              padding: "0.75rem 1.5rem",
+              background: "transparent",
               border: "none",
-              background:
-                viewLoading || orders.length === 0 ? "#1d4ed8aa" : "#3b82f6",
-              color: "white",
-              fontWeight: 600,
-              cursor:
-                viewLoading || orders.length === 0 ? "default" : "pointer",
-              fontSize: "0.9rem",
+              borderBottom: activeTab === "create" ? "3px solid #22c55e" : "3px solid transparent",
+              color: activeTab === "create" ? "#22c55e" : "#9ca3af",
+              fontWeight: activeTab === "create" ? 600 : 400,
+              cursor: "pointer",
+              fontSize: "0.95rem",
+              transition: "all 0.2s",
             }}
           >
-            {viewLoading ? "Buscando..." : "Ver orden"}
+            ➕ Crear Orden
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("manage");
+              handleFetch();
+            }}
+            style={{
+              padding: "0.75rem 1.5rem",
+              background: "transparent",
+              border: "none",
+              borderBottom: activeTab === "manage" ? "3px solid #3b82f6" : "3px solid transparent",
+              color: activeTab === "manage" ? "#3b82f6" : "#9ca3af",
+              fontWeight: activeTab === "manage" ? 600 : 400,
+              cursor: "pointer",
+              fontSize: "0.95rem",
+              transition: "all 0.2s",
+            }}
+          >
+            📋 Gestionar Órdenes
           </button>
         </div>
 
-        {viewError && (
-          <p
+        {/* TAB CONTENT: CREAR ORDEN */}
+        {activeTab === "create" && (
+          <section
             style={{
-              color: "#f87171",
-              fontSize: "0.85rem",
-              marginBottom: "0.5rem",
+              background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+              padding: "2rem",
+              borderRadius: "1rem",
+              border: "1px solid #334155",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.3)",
             }}
           >
-            {viewError}
-          </p>
-        )}
+            <div style={{ marginBottom: "1.5rem" }}>
+              <h2 style={{ fontSize: "1.5rem", marginBottom: "0.5rem", fontWeight: 600 }}>
+                Nueva Orden
+              </h2>
+              <p style={{ color: "#9ca3af", fontSize: "0.9rem" }}>
+                Creá una orden para una mesa o para llevar
+              </p>
+            </div>
 
-        {orders.length === 0 && (
-          <p
-            style={{
-              color: "#9ca3af",
-              fontSize: "0.8rem",
-              marginBottom: "0.5rem",
-            }}
-          >
-            Tip: primero buscá pedidos con los filtros de arriba para cargar el
-            listado en este select.
-          </p>
-        )}
-
-        {viewOrder && (
-          <div
-            style={{
-              marginTop: "0.75rem",
-              padding: "0.75rem",
-              borderRadius: "0.75rem",
-              background: "#020617",
-              border: "1px solid #475569",
-              overflowX: "auto",
-            }}
-          >
-            <p
-              style={{
-                fontSize: "0.9rem",
-                marginBottom: "0.4rem",
-                color: "#e5e7eb",
-              }}
-            >
-              Respuesta cruda del endpoint:
-              <code style={{ fontSize: "0.8rem", color: "#93c5fd" }}>
-                {" "}
-                GET /api/v1/orders/{viewOrderId}
-              </code>
-            </p>
-            <pre
-              style={{
-                fontSize: "0.8rem",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                background: "#020617",
-                padding: "0.75rem",
-                borderRadius: "0.5rem",
-                border: "1px solid #334155",
-                maxHeight: "320px",
-                overflow: "auto",
-              }}
-            >
-              {JSON.stringify(viewOrder, null, 2)}
-            </pre>
-          </div>
-        )}
-      </section>
-
-      {/* =========================
-          CERRAR CUENTA / CREAR FACTURA (POST /bills)
-      ========================== */}
-      <section
-        style={{
-          background: "#020617",
-          padding: "1rem",
-          borderRadius: "0.75rem",
-          marginBottom: "1.5rem",
-          border: "1px solid #334155",
-        }}
-      >
-        <h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
-          Cerrar cuenta / Crear factura (POST /bills)
-        </h2>
-
-        {billError && (
-          <p
-            style={{
-              color: "#f87171",
-              fontSize: "0.85rem",
-              marginBottom: "0.5rem",
-            }}
-          >
-            {billError}
-          </p>
-        )}
-
-        {billSuccess && (
-          <p
-            style={{
-              color: "#4ade80",
-              fontSize: "0.85rem",
-              marginBottom: "0.5rem",
-            }}
-          >
-            {billSuccess}
-          </p>
-        )}
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "0.75rem",
-            marginBottom: "0.75rem",
-          }}
-        >
-          {/* Orden */}
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "0.25rem",
-                fontSize: "0.85rem",
-              }}
-            >
-              Orden a facturar
-            </label>
-            <select
-              value={billOrderId}
-              onChange={(e) => setBillOrderId(e.target.value)}
-              disabled={orders.length === 0}
-              style={{
-                width: "100%",
-                padding: "0.45rem 0.6rem",
-                borderRadius: "0.5rem",
-                border: "1px solid #475569",
-                background: "#0f172a",
-                color: "white",
-                fontSize: "0.9rem",
-              }}
-            >
-              <option value="">
-                {orders.length === 0
-                  ? "No hay pedidos abiertos para facturar."
-                  : "Seleccionar orden..."}
-              </option>
-              {orders.map((o) => (
-                <option key={o.id} value={o.id}>
-                  Pedido #{o.orderNumber ?? o.id} —{" "}
-                  {o.tableNumber ? `Mesa #${o.tableNumber}` : "Sin mesa"} — total $
-                  {formatOrderTotal(o)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Medio de pago */}
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "0.25rem",
-                fontSize: "0.85rem",
-              }}
-            >
-              Medio de pago
-            </label>
-            <select
-              value={billPaymentMethod}
-              onChange={(e) =>
-                setBillPaymentMethod(e.target.value as PaymentMethod)
-              }
-              style={{
-                width: "100%",
-                padding: "0.45rem 0.6rem",
-                borderRadius: "0.5rem",
-                border: "1px solid #475569",
-                background: "#0f172a",
-                color: "white",
-                fontSize: "0.9rem",
-              }}
-            >
-              <option value="cash">Efectivo</option>
-              <option value="credit_card">Tarjeta de crédito</option>
-              <option value="debit_card">Tarjeta de débito</option>
-              <option value="transfer">Transferencia</option>
-              <option value="digital_wallet">
-                Billetera digital (MercadoPago, etc.)
-              </option>
-            </select>
-          </div>
-
-          {/* Monto pagado */}
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "0.25rem",
-                fontSize: "0.85rem",
-              }}
-            >
-              Monto pagado (paidAmount) *
-            </label>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={billPaidAmount}
-              onChange={(e) => setBillPaidAmount(e.target.value)}
-              placeholder="Ej: 50.00"
-              style={{
-                width: "100%",
-                padding: "0.45rem 0.6rem",
-                borderRadius: "0.5rem",
-                border: "1px solid #475569",
-                background: "#0f172a",
-                color: "white",
-                fontSize: "0.9rem",
-              }}
-            />
-          </div>
-
-          {/* Descuento */}
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "0.25rem",
-                fontSize: "0.85rem",
-              }}
-            >
-              Descuento (discountAmount) opcional
-            </label>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={billDiscountAmount}
-              onChange={(e) => setBillDiscountAmount(e.target.value)}
-              placeholder="Ej: 0.00"
-              style={{
-                width: "100%",
-                padding: "0.45rem 0.6rem",
-                borderRadius: "0.5rem",
-                border: "1px solid #475569",
-                background: "#0f172a",
-                color: "white",
-                fontSize: "0.9rem",
-              }}
-            />
-          </div>
-
-          {/* Propina */}
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "0.25rem",
-                fontSize: "0.85rem",
-              }}
-            >
-              Propina (tipAmount) opcional
-            </label>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={billTipAmount}
-              onChange={(e) => setBillTipAmount(e.target.value)}
-              placeholder="Ej: 5.00"
-              style={{
-                width: "100%",
-                padding: "0.45rem 0.6rem",
-                borderRadius: "0.5rem",
-                border: "1px solid #475569",
-                background: "#0f172a",
-                color: "white",
-                fontSize: "0.9rem",
-              }}
-            />
-          </div>
-
-          {/* CashierId opcional */}
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "0.25rem",
-                fontSize: "0.85rem",
-              }}
-            >
-              Cashier ID (opcional)
-            </label>
-            <input
-              type="text"
-              value={billCashierId}
-              onChange={(e) => setBillCashierId(e.target.value)}
-              placeholder="cashier-uuid (por defecto tu userId)"
-              style={{
-                width: "100%",
-                padding: "0.45rem 0.6rem",
-                borderRadius: "0.5rem",
-                border: "1px solid #475569",
-                background: "#0f172a",
-                color: "white",
-                fontSize: "0.9rem",
-              }}
-            />
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleCreateBill}
-          disabled={billLoading || orders.length === 0}
-          style={{
-            padding: "0.7rem 1.1rem",
-            borderRadius: "0.6rem",
-            border: "none",
-            background:
-              billLoading || orders.length === 0 ? "#22c55e55" : "#22c55e",
-            color: "#022c22",
-            fontWeight: 600,
-            cursor:
-              billLoading || orders.length === 0 ? "default" : "pointer",
-            fontSize: "0.9rem",
-          }}
-        >
-          {billLoading ? "Creando factura..." : "Cerrar cuenta"}
-        </button>
-
-        {orders.length === 0 && (
-          <p
-            style={{
-              color: "#9ca3af",
-              fontSize: "0.8rem",
-              marginTop: "0.5rem",
-            }}
-          >
-            No hay pedidos activos para facturar. Primero generá o buscá pedidos
-            con los filtros de arriba.
-          </p>
-        )}
-      </section>
-
-      {errorMsg && <p style={{ color: "#f87171" }}>{errorMsg}</p>}
-      {removeItemError && (
-        <p style={{ color: "#f97316", marginBottom: "0.75rem" }}>
-          {removeItemError}
-        </p>
-      )}
-
-      {/* LISTA DE PEDIDOS */}
-      <div style={{ display: "grid", gap: "1rem" }}>
-        {orders.map((o) => (
-          <div
-            key={o.id}
-            style={{
-              background: "#1e293b",
-              padding: "1rem",
-              borderRadius: "0.75rem",
-            }}
-          >
-            <h3>Pedido #{o.orderNumber ?? o.id}</h3>
-            <p>
-              <strong>Tipo:</strong> {o.orderType ? o.orderType : "—"}
-            </p>
-            <p>
-              <strong>Cliente:</strong>{" "}
-              {(o as any).customerId ?? "—"}
-            </p>
-            <p>
-              <strong>Mesa:</strong>{" "}
-              {o.tableNumber ? `#${o.tableNumber}` : "—"}
-            </p>
-            <p>
-              <strong>Estado:</strong> {o.status}
-            </p>
-            <p>
-              <strong>Total:</strong> ${formatOrderTotal(o)}
-            </p>
-            <p>
-              <strong>Creado:</strong>{" "}
-              {o.createdAt ? new Date(o.createdAt).toLocaleString() : "—"}
-            </p>
-
-            <h4>Items:</h4>
-            <ul>
-              {o.items.map((it, idx) => {
-                const itemIdentifier = (it as any).itemId ?? (it as any).id;
-
-                return (
-                  <li key={idx}>
-                    {it.productName} x{it.quantity} — ${it.subtotal}{" "}
-                    {itemIdentifier && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleRemoveItemFromOrder(o.id, itemIdentifier)
-                        }
-                        disabled={removeItemLoadingId === itemIdentifier}
-                        style={{
-                          marginLeft: "0.5rem",
-                          padding: "0.2rem 0.6rem",
-                          borderRadius: "999px",
-                          border: "1px solid #f97316",
-                          background: "#7c2d1233",
-                          color: "#fed7aa",
-                          fontSize: "0.75rem",
-                          cursor:
-                            removeItemLoadingId === itemIdentifier
-                              ? "default"
-                              : "pointer",
-                        }}
-                      >
-                        {removeItemLoadingId === itemIdentifier
-                          ? "Quitando..."
-                          : "Quitar"}
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-
-            {/* Agregar/actualizar items */}
-            {editOrderId !== o.id ? (
-              <button
-                type="button"
-                onClick={() => handleStartEditOrderItems(o.id)}
-                style={{
-                  marginTop: "0.75rem",
-                  padding: "0.5rem 0.9rem",
-                  borderRadius: "999px",
-                  border: "1px solid #3b82f6",
-                  background: "#1d4ed833",
-                  color: "#bfdbfe",
-                  fontSize: "0.8rem",
-                  cursor: "pointer",
-                }}
-              >
-                + Agregar/actualizar items
-              </button>
-            ) : (
+            {createError && (
               <div
                 style={{
-                  marginTop: "0.75rem",
-                  padding: "0.75rem",
-                  borderRadius: "0.75rem",
-                  border: "1px solid #334155",
-                  background: "#020617",
+                  padding: "0.75rem 1rem",
+                  borderRadius: "0.5rem",
+                  background: "#7f1d1d",
+                  border: "1px solid #dc2626",
+                  color: "#fecaca",
+                  marginBottom: "1rem",
+                  fontSize: "0.9rem",
                 }}
               >
-                <h4
+                ❌ {createError}
+              </div>
+            )}
+            {createSuccess && (
+              <div
+                style={{
+                  padding: "0.75rem 1rem",
+                  borderRadius: "0.5rem",
+                  background: "#14532d",
+                  border: "1px solid #22c55e",
+                  color: "#bbf7d0",
+                  marginBottom: "1rem",
+                  fontSize: "0.9rem",
+                }}
+              >
+                {createSuccess}
+              </div>
+            )}
+
+            <form
+              onSubmit={handleCreateOrder}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "1.5rem",
+              }}
+            >
+              {/* Datos básicos */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "0.5rem",
+                      fontSize: "0.9rem",
+                      fontWeight: 500,
+                      color: "#e5e7eb",
+                    }}
+                  >
+                    Tipo de orden *
+                  </label>
+                  <select
+                    value={createOrderType}
+                    onChange={(e) => setCreateOrderType(e.target.value as OrderType)}
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    <option value="dine_in">🏠 Dentro del local</option>
+                    <option value="takeaway">📦 Para llevar</option>
+                    <option value="delivery">🚚 Delivery</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "0.5rem",
+                      fontSize: "0.9rem",
+                      fontWeight: 500,
+                      color: "#e5e7eb",
+                    }}
+                  >
+                    Mesa {createOrderType === "dine_in" && "*"}
+                  </label>
+                  <select
+                    value={createOrderTableId}
+                    onChange={(e) => setCreateOrderTableId(e.target.value)}
+                    disabled={loadingTables || createOrderType !== "dine_in"}
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background:
+                        createOrderType === "dine_in" ? "#0f172a" : "#0f172a66",
+                      color: "white",
+                      fontSize: "0.9rem",
+                      opacity: createOrderType === "dine_in" ? 1 : 0.5,
+                    }}
+                  >
+                    <option value="">
+                      {createOrderType === "dine_in"
+                        ? "(Seleccioná una mesa)"
+                        : "(No aplica)"}
+                    </option>
+                    {tables.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        Mesa #{t.number} — {t.location}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "0.5rem",
+                      fontSize: "0.9rem",
+                      fontWeight: 500,
+                      color: "#e5e7eb",
+                    }}
+                  >
+                    ID Cliente (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={createCustomerId}
+                    onChange={(e) => setCreateCustomerId(e.target.value)}
+                    placeholder="customer-uuid"
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                      fontSize: "0.9rem",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Items */}
+              <div>
+                <h3
                   style={{
-                    fontSize: "0.9rem",
-                    marginBottom: "0.5rem",
+                    fontSize: "1rem",
+                    marginBottom: "0.75rem",
                     fontWeight: 600,
+                    color: "#e5e7eb",
                   }}
                 >
-                  Editar items de esta orden
-                </h4>
+                  Productos
+                </h3>
 
-                {editError && (
-                  <p
-                    style={{
-                      color: "#f87171",
-                      marginBottom: "0.4rem",
-                      fontSize: "0.8rem",
-                    }}
-                  >
-                    {editError}
-                  </p>
-                )}
-                {editSuccess && (
-                  <p
-                    style={{
-                      color: "#4ade80",
-                      marginBottom: "0.4rem",
-                      fontSize: "0.8rem",
-                    }}
-                  >
-                    {editSuccess}
+                {loadingProducts && (
+                  <p style={{ color: "#9ca3af", fontSize: "0.85rem" }}>
+                    Cargando productos del menú...
                   </p>
                 )}
 
-                <form
-                  onSubmit={handleUpdateOrderItems}
-                  style={{
-                    display: "grid",
-                    gap: "0.5rem",
-                  }}
-                >
-                  {editItems.map((item, index) => (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  {createItems.map((item, index) => (
                     <div
                       key={index}
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "2fr minmax(80px,0.8fr) auto",
-                        gap: "0.5rem",
+                        gridTemplateColumns: "2fr minmax(100px,0.8fr) 2fr auto",
+                        gap: "0.75rem",
                         alignItems: "center",
+                        padding: "0.75rem",
+                        background: "#020617",
+                        borderRadius: "0.5rem",
+                        border: "1px solid #334155",
                       }}
                     >
-                      {/* Producto */}
                       <select
                         value={item.productId}
                         onChange={(e) =>
-                          handleChangeEditItem(
-                            index,
-                            "productId",
-                            e.target.value
-                          )
+                          handleChangeItem(index, "productId", e.target.value)
                         }
                         style={{
-                          padding: "0.45rem 0.6rem",
+                          padding: "0.6rem 0.75rem",
                           borderRadius: "0.5rem",
                           border: "1px solid #475569",
-                          background: "#020617",
+                          background: "#0f172a",
                           color: "white",
-                          fontSize: "0.85rem",
+                          fontSize: "0.9rem",
                         }}
                       >
                         <option value="">Seleccionar producto...</option>
@@ -1925,124 +1127,841 @@ export default function OrdersPage() {
                         ))}
                       </select>
 
-                      {/* Cantidad FINAL */}
                       <input
                         type="number"
                         min={1}
                         value={item.quantity}
                         onChange={(e) =>
-                          handleChangeEditItem(
-                            index,
-                            "quantity",
-                            e.target.value
-                          )
+                          handleChangeItem(index, "quantity", e.target.value)
                         }
+                        placeholder="Cantidad"
                         style={{
-                          padding: "0.45rem 0.6rem",
+                          padding: "0.6rem 0.75rem",
                           borderRadius: "0.5rem",
                           border: "1px solid #475569",
-                          background: "#020617",
+                          background: "#0f172a",
                           color: "white",
-                          fontSize: "0.85rem",
+                          fontSize: "0.9rem",
                           width: "100%",
                         }}
                       />
 
-                      {/* Eliminar fila */}
+                      <input
+                        type="text"
+                        value={item.specialInstructions}
+                        onChange={(e) =>
+                          handleChangeItem(
+                            index,
+                            "specialInstructions",
+                            e.target.value
+                          )
+                        }
+                        placeholder="Instrucciones (ej: sin cebolla)"
+                        style={{
+                          padding: "0.6rem 0.75rem",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #475569",
+                          background: "#0f172a",
+                          color: "white",
+                          fontSize: "0.9rem",
+                          width: "100%",
+                        }}
+                      />
+
                       <button
                         type="button"
-                        onClick={() => handleRemoveEditItemRow(index)}
-                        disabled={editItems.length === 1}
+                        onClick={() => handleRemoveItemRow(index)}
+                        disabled={createItems.length === 1}
                         style={{
-                          padding: "0.35rem 0.7rem",
-                          borderRadius: "999px",
+                          padding: "0.6rem 1rem",
+                          borderRadius: "0.5rem",
                           border: "1px solid #f97316",
-                          background: "#7c2d1233",
+                          background: createItems.length === 1 ? "#7c2d1233" : "#7c2d1266",
                           color: "#fed7aa",
-                          fontSize: "0.8rem",
-                          cursor:
-                            editItems.length === 1 ? "default" : "pointer",
+                          fontSize: "0.85rem",
+                          cursor: createItems.length === 1 ? "not-allowed" : "pointer",
                           whiteSpace: "nowrap",
+                          opacity: createItems.length === 1 ? 0.5 : 1,
                         }}
                       >
                         Eliminar
                       </button>
                     </div>
                   ))}
+                </div>
 
-                  <div
+                <button
+                  type="button"
+                  onClick={handleAddItemRow}
+                  style={{
+                    marginTop: "0.75rem",
+                    padding: "0.6rem 1.2rem",
+                    borderRadius: "0.5rem",
+                    border: "1px solid #3b82f6",
+                    background: "#1d4ed833",
+                    color: "#bfdbfe",
+                    fontSize: "0.9rem",
+                    cursor: "pointer",
+                    fontWeight: 500,
+                  }}
+                >
+                  + Agregar producto
+                </button>
+              </div>
+
+              <button
+                type="submit"
+                disabled={creating}
+                style={{
+                  padding: "0.875rem 1.5rem",
+                  borderRadius: "0.5rem",
+                  border: "none",
+                  background: creating ? "#22c55e55" : "#22c55e",
+                  color: "#022c22",
+                  fontWeight: 600,
+                  cursor: creating ? "not-allowed" : "pointer",
+                  fontSize: "1rem",
+                  transition: "all 0.2s",
+                  boxShadow: creating ? "none" : "0 4px 12px rgba(34, 197, 94, 0.3)",
+                }}
+              >
+                {creating ? "⏳ Creando orden..." : "✅ Crear Orden"}
+              </button>
+            </form>
+          </section>
+        )}
+
+        {/* TAB CONTENT: GESTIONAR ÓRDENES */}
+        {activeTab === "manage" && (
+          <div>
+            {/* FILTROS */}
+            <div
+              style={{
+                background: "#1e293b",
+                padding: "1.5rem",
+                borderRadius: "0.75rem",
+                marginBottom: "1.5rem",
+                border: "1px solid #334155",
+              }}
+            >
+              <h3 style={{ fontSize: "1.1rem", marginBottom: "1rem", fontWeight: 600 }}>
+                🔍 Filtros de búsqueda
+              </h3>
+              <div
+                style={{
+                  display: "grid",
+                  gap: "1rem",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                }}
+              >
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                    Estado
+                  </label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
                     style={{
-                      display: "flex",
-                      gap: "0.5rem",
-                      marginTop: "0.5rem",
-                      flexWrap: "wrap",
+                      width: "100%",
+                      padding: "0.5rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
                     }}
                   >
-                    <button
-                      type="button"
-                      onClick={handleAddEditItemRow}
-                      style={{
-                        padding: "0.4rem 0.9rem",
-                        borderRadius: "999px",
-                        border: "1px solid #3b82f6",
-                        background: "#1d4ed833",
-                        color: "#bfdbfe",
-                        fontSize: "0.8rem",
-                        cursor: "pointer",
-                      }}
-                    >
-                      + Agregar otro producto
-                    </button>
+                    <option value="">(Todos)</option>
+                    <option value="pending">Pendiente</option>
+                    <option value="preparing">Preparando</option>
+                    <option value="delivered">Entregado</option>
+                    <option value="cancelled">Cancelado</option>
+                  </select>
+                </div>
 
-                    <button
-                      type="submit"
-                      disabled={editLoading}
-                      style={{
-                        padding: "0.4rem 0.9rem",
-                        borderRadius: "999px",
-                        border: "none",
-                        background: "#22c55e",
-                        color: "#022c22",
-                        fontSize: "0.8rem",
-                        fontWeight: 600,
-                        cursor: editLoading ? "default" : "pointer",
-                      }}
-                    >
-                      {editLoading ? "Actualizando..." : "Guardar cambios"}
-                    </button>
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                    Mesa
+                  </label>
+                  <select
+                    value={tableId}
+                    onChange={(e) => setTableId(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.5rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                    }}
+                    disabled={loadingTables}
+                  >
+                    <option value="">(Todas)</option>
+                    {tables.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        Mesa #{t.number}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditOrderId(null);
-                        setEditItems([
-                          {
-                            productId: "",
-                            quantity: 1,
-                            specialInstructions: "",
-                          },
-                        ]);
-                        setEditError("");
-                        setEditSuccess("");
-                      }}
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                    Tipo de orden
+                  </label>
+                  <select
+                    value={orderTypeFilter}
+                    onChange={(e) => setOrderTypeFilter(e.target.value as OrderType | "")}
+                    style={{
+                      width: "100%",
+                      padding: "0.5rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                    }}
+                  >
+                    <option value="">(Todas)</option>
+                    <option value="dine_in">Dentro del local</option>
+                    <option value="takeaway">Para llevar</option>
+                    <option value="delivery">Delivery</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                    Fecha
+                  </label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.5rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                    Customer ID
+                  </label>
+                  <input
+                    type="text"
+                    value={customerIdFilter}
+                    onChange={(e) => setCustomerIdFilter(e.target.value)}
+                    placeholder="Filtrar por cliente"
+                    style={{
+                      width: "100%",
+                      padding: "0.5rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid #475569",
+                      background: "#0f172a",
+                      color: "white",
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", alignItems: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={handleFetch}
+                    disabled={loading}
+                    style={{
+                      width: "100%",
+                      padding: "0.625rem 1.25rem",
+                      background: loading ? "#3b82f655" : "#3b82f6",
+                      borderRadius: "0.5rem",
+                      fontWeight: 600,
+                      border: "none",
+                      color: "white",
+                      cursor: loading ? "not-allowed" : "pointer",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    {loading ? "Buscando..." : "🔍 Buscar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {errorMsg && (
+              <div
+                style={{
+                  padding: "0.75rem 1rem",
+                  borderRadius: "0.5rem",
+                  background: "#7f1d1d",
+                  border: "1px solid #dc2626",
+                  color: "#fecaca",
+                  marginBottom: "1rem",
+                }}
+              >
+                ❌ {errorMsg}
+              </div>
+            )}
+
+            {removeItemError && (
+              <div
+                style={{
+                  padding: "0.75rem 1rem",
+                  borderRadius: "0.5rem",
+                  background: "#7f1d1d",
+                  border: "1px solid #dc2626",
+                  color: "#fecaca",
+                  marginBottom: "1rem",
+                }}
+              >
+                ❌ {removeItemError}
+              </div>
+            )}
+
+            {/* LISTADO DE ÓRDENES */}
+            {loading ? (
+              <p style={{ color: "#9ca3af", textAlign: "center", padding: "2rem" }}>
+                Cargando órdenes...
+              </p>
+            ) : orders.length === 0 ? (
+              <div
+                style={{
+                  padding: "3rem",
+                  textAlign: "center",
+                  background: "#1e293b",
+                  borderRadius: "0.75rem",
+                  border: "1px solid #334155",
+                }}
+              >
+                <p style={{ color: "#9ca3af", fontSize: "1rem", marginBottom: "0.5rem" }}>
+                  📭 No se encontraron órdenes
+                </p>
+                <p style={{ color: "#64748b", fontSize: "0.9rem" }}>
+                  Ajustá los filtros o creá una nueva orden
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: "1.5rem" }}>
+                {orders.map((o) => {
+                  const orderTotal = formatOrderTotal(o);
+                  const isEditing = editOrderId === o.id;
+
+                  return (
+                    <div
+                      key={o.id}
                       style={{
-                        padding: "0.4rem 0.9rem",
-                        borderRadius: "999px",
-                        border: "1px solid #64748b",
-                        background: "transparent",
-                        color: "#e5e7eb",
-                        fontSize: "0.8rem",
-                        cursor: "pointer",
+                        background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+                        padding: "1.5rem",
+                        borderRadius: "0.75rem",
+                        border: "1px solid #334155",
+                        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)",
                       }}
                     >
-                      Cancelar
-                    </button>
-                  </div>
-                </form>
+                      {/* HEADER */}
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          marginBottom: "1rem",
+                          flexWrap: "wrap",
+                          gap: "1rem",
+                        }}
+                      >
+                        <div>
+                          <h3 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                            Pedido #{(o as any).orderNumber ?? o.id.slice(0, 8)}
+                          </h3>
+                          <p style={{ color: "#9ca3af", fontSize: "0.85rem" }}>
+                            {o.createdAt ? new Date(o.createdAt).toLocaleString() : "—"}
+                          </p>
+                        </div>
+                        <div
+                          style={{
+                            padding: "0.375rem 0.75rem",
+                            borderRadius: "999px",
+                            background: "#1e293b",
+                            color: "#e5e7eb",
+                            fontSize: "0.8rem",
+                            fontWeight: 500,
+                          }}
+                        >
+                          {o.status}
+                        </div>
+                      </div>
+
+                      {/* INFO */}
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                          gap: "1rem",
+                          marginBottom: "1rem",
+                          padding: "1rem",
+                          background: "#020617",
+                          borderRadius: "0.5rem",
+                        }}
+                      >
+                        <div>
+                          <p style={{ color: "#9ca3af", fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+                            Tipo
+                          </p>
+                          <p style={{ fontSize: "0.9rem", fontWeight: 500 }}>
+                            {o.orderType === "dine_in"
+                              ? "🏠 Dentro del local"
+                              : o.orderType === "takeaway"
+                              ? "📦 Para llevar"
+                              : o.orderType === "delivery"
+                              ? "🚚 Delivery"
+                              : o.orderType ?? "—"}
+                          </p>
+                        </div>
+                        {(o as any).tableNumber && (
+                          <div>
+                            <p style={{ color: "#9ca3af", fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+                              Mesa
+                            </p>
+                            <p style={{ fontSize: "0.9rem", fontWeight: 500 }}>
+                              #{(o as any).tableNumber}
+                            </p>
+                          </div>
+                        )}
+                        <div>
+                          <p style={{ color: "#9ca3af", fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+                            Total
+                          </p>
+                          <p style={{ fontSize: "1.1rem", fontWeight: 700, color: "#22c55e" }}>
+                            ${orderTotal}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* ITEMS */}
+                      <div style={{ marginBottom: "1rem" }}>
+                        <p style={{ fontSize: "0.9rem", fontWeight: 600, marginBottom: "0.5rem", color: "#e5e7eb" }}>
+                          Items:
+                        </p>
+                        <ul
+                          style={{
+                            paddingLeft: "1.1rem",
+                            fontSize: "0.9rem",
+                            color: "#e5e7eb",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "0.25rem",
+                          }}
+                        >
+                          {o.items.map((it, idx) => {
+                            const itemIdentifier = (it as any).itemId ?? (it as any).id;
+                            return (
+                              <li key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span>
+                                  {it.productName} x{it.quantity} — ${it.subtotal}
+                                </span>
+                                {itemIdentifier && !isEditing && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveItemFromOrder(o.id, itemIdentifier)}
+                                    disabled={removeItemLoadingId === itemIdentifier}
+                                    style={{
+                                      marginLeft: "0.5rem",
+                                      padding: "0.25rem 0.5rem",
+                                      borderRadius: "0.25rem",
+                                      border: "1px solid #f97316",
+                                      background: "#7c2d1233",
+                                      color: "#fed7aa",
+                                      fontSize: "0.75rem",
+                                      cursor: removeItemLoadingId === itemIdentifier ? "not-allowed" : "pointer",
+                                    }}
+                                  >
+                                    {removeItemLoadingId === itemIdentifier ? "Quitando..." : "Quitar"}
+                                  </button>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+
+                      {/* EDITAR ITEMS */}
+                      {!isEditing ? (
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditOrderItems(o.id)}
+                          style={{
+                            marginBottom: "1rem",
+                            padding: "0.6rem 1rem",
+                            borderRadius: "0.5rem",
+                            border: "1px solid #3b82f6",
+                            background: "#1d4ed833",
+                            color: "#bfdbfe",
+                            fontSize: "0.9rem",
+                            cursor: "pointer",
+                            fontWeight: 500,
+                          }}
+                        >
+                          ✏️ Agregar/actualizar items
+                        </button>
+                      ) : (
+                        <div
+                          style={{
+                            marginBottom: "1rem",
+                            padding: "1rem",
+                            borderRadius: "0.5rem",
+                            border: "1px solid #334155",
+                            background: "#020617",
+                          }}
+                        >
+                          <h4 style={{ fontSize: "0.9rem", marginBottom: "0.75rem", fontWeight: 600 }}>
+                            Editar items
+                          </h4>
+
+                          {editError && (
+                            <p style={{ color: "#f87171", marginBottom: "0.5rem", fontSize: "0.85rem" }}>
+                              {editError}
+                            </p>
+                          )}
+                          {editSuccess && (
+                            <p style={{ color: "#4ade80", marginBottom: "0.5rem", fontSize: "0.85rem" }}>
+                              {editSuccess}
+                            </p>
+                          )}
+
+                          <form onSubmit={handleUpdateOrderItems} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                            {editItems.map((item, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "2fr minmax(100px,0.8fr) auto",
+                                  gap: "0.75rem",
+                                  alignItems: "center",
+                                }}
+                              >
+                                <select
+                                  value={item.productId}
+                                  onChange={(e) =>
+                                    handleChangeEditItem(index, "productId", e.target.value)
+                                  }
+                                  style={{
+                                    padding: "0.5rem 0.75rem",
+                                    borderRadius: "0.5rem",
+                                    border: "1px solid #475569",
+                                    background: "#0f172a",
+                                    color: "white",
+                                    fontSize: "0.85rem",
+                                  }}
+                                >
+                                  <option value="">Seleccionar producto...</option>
+                                  {products.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name} — ${p.price.toFixed(2)}
+                                    </option>
+                                  ))}
+                                </select>
+
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={item.quantity}
+                                  onChange={(e) =>
+                                    handleChangeEditItem(index, "quantity", e.target.value)
+                                  }
+                                  style={{
+                                    padding: "0.5rem 0.75rem",
+                                    borderRadius: "0.5rem",
+                                    border: "1px solid #475569",
+                                    background: "#0f172a",
+                                    color: "white",
+                                    fontSize: "0.85rem",
+                                    width: "100%",
+                                  }}
+                                />
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveEditItemRow(index)}
+                                  disabled={editItems.length === 1}
+                                  style={{
+                                    padding: "0.5rem 1rem",
+                                    borderRadius: "0.5rem",
+                                    border: "1px solid #f97316",
+                                    background: "#7c2d1233",
+                                    color: "#fed7aa",
+                                    fontSize: "0.85rem",
+                                    cursor: editItems.length === 1 ? "not-allowed" : "pointer",
+                                  }}
+                                >
+                                  Eliminar
+                                </button>
+                              </div>
+                            ))}
+
+                            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+                              <button
+                                type="button"
+                                onClick={handleAddEditItemRow}
+                                style={{
+                                  padding: "0.5rem 1rem",
+                                  borderRadius: "0.5rem",
+                                  border: "1px solid #3b82f6",
+                                  background: "#1d4ed833",
+                                  color: "#bfdbfe",
+                                  fontSize: "0.85rem",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                + Agregar producto
+                              </button>
+
+                              <button
+                                type="submit"
+                                disabled={editLoading}
+                                style={{
+                                  padding: "0.5rem 1rem",
+                                  borderRadius: "0.5rem",
+                                  border: "none",
+                                  background: "#22c55e",
+                                  color: "#022c22",
+                                  fontSize: "0.85rem",
+                                  fontWeight: 600,
+                                  cursor: editLoading ? "not-allowed" : "pointer",
+                                }}
+                              >
+                                {editLoading ? "Actualizando..." : "Guardar"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditOrderId(null);
+                                  setEditItems([{ productId: "", quantity: 1, specialInstructions: "" }]);
+                                  setEditError("");
+                                  setEditSuccess("");
+                                }}
+                                style={{
+                                  padding: "0.5rem 1rem",
+                                  borderRadius: "0.5rem",
+                                  border: "1px solid #64748b",
+                                  background: "transparent",
+                                  color: "#e5e7eb",
+                                  fontSize: "0.85rem",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      )}
+
+                      {/* CERRAR CUENTA / FACTURAR */}
+                      <div
+                        style={{
+                          padding: "1rem",
+                          background: "#1e293b",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #334155",
+                        }}
+                      >
+                        <h4 style={{ fontSize: "0.95rem", marginBottom: "0.75rem", fontWeight: 600, color: "#e5e7eb" }}>
+                          💳 Cerrar Cuenta / Facturar
+                        </h4>
+
+                        {billOrderId === o.id && billError && (
+                          <p style={{ color: "#f87171", marginBottom: "0.5rem", fontSize: "0.85rem" }}>
+                            {billError}
+                          </p>
+                        )}
+
+                        {billOrderId === o.id && billSuccess && (
+                          <p style={{ color: "#4ade80", marginBottom: "0.5rem", fontSize: "0.85rem" }}>
+                            {billSuccess}
+                          </p>
+                        )}
+
+                        {billOrderId !== o.id ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBillOrderId(o.id);
+                              setBillPaidAmount(orderTotal);
+                            }}
+                            style={{
+                              width: "100%",
+                              padding: "0.75rem 1rem",
+                              borderRadius: "0.5rem",
+                              border: "1px solid #22c55e",
+                              background: "#14532d33",
+                              color: "#86efac",
+                              fontSize: "0.9rem",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            💰 Cerrar Cuenta
+                          </button>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                                gap: "0.75rem",
+                              }}
+                            >
+                              <div>
+                                <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                                  Método de pago
+                                </label>
+                                <select
+                                  value={billPaymentMethod}
+                                  onChange={(e) =>
+                                    setBillPaymentMethod(e.target.value as PaymentMethod)
+                                  }
+                                  style={{
+                                    width: "100%",
+                                    padding: "0.5rem",
+                                    borderRadius: "0.5rem",
+                                    border: "1px solid #475569",
+                                    background: "#0f172a",
+                                    color: "white",
+                                    fontSize: "0.85rem",
+                                  }}
+                                >
+                                  <option value="cash">Efectivo</option>
+                                  <option value="credit_card">Tarjeta de crédito</option>
+                                  <option value="debit_card">Tarjeta de débito</option>
+                                  <option value="transfer">Transferencia</option>
+                                  <option value="digital_wallet">Billetera digital</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                                  Monto pagado *
+                                </label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  value={billPaidAmount}
+                                  onChange={(e) => setBillPaidAmount(e.target.value)}
+                                  placeholder={orderTotal}
+                                  style={{
+                                    width: "100%",
+                                    padding: "0.5rem",
+                                    borderRadius: "0.5rem",
+                                    border: "1px solid #475569",
+                                    background: "#0f172a",
+                                    color: "white",
+                                    fontSize: "0.85rem",
+                                  }}
+                                />
+                              </div>
+
+                              <div>
+                                <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                                  Descuento (opcional)
+                                </label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  value={billDiscountAmount}
+                                  onChange={(e) => setBillDiscountAmount(e.target.value)}
+                                  placeholder="0.00"
+                                  style={{
+                                    width: "100%",
+                                    padding: "0.5rem",
+                                    borderRadius: "0.5rem",
+                                    border: "1px solid #475569",
+                                    background: "#0f172a",
+                                    color: "white",
+                                    fontSize: "0.85rem",
+                                  }}
+                                />
+                              </div>
+
+                              <div>
+                                <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+                                  Propina (opcional)
+                                </label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  value={billTipAmount}
+                                  onChange={(e) => setBillTipAmount(e.target.value)}
+                                  placeholder="0.00"
+                                  style={{
+                                    width: "100%",
+                                    padding: "0.5rem",
+                                    borderRadius: "0.5rem",
+                                    border: "1px solid #475569",
+                                    background: "#0f172a",
+                                    color: "white",
+                                    fontSize: "0.85rem",
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            <div style={{ display: "flex", gap: "0.5rem" }}>
+                              <button
+                                type="button"
+                                onClick={handleCreateBill}
+                                disabled={billLoading}
+                                style={{
+                                  flex: 1,
+                                  padding: "0.75rem 1rem",
+                                  borderRadius: "0.5rem",
+                                  border: "none",
+                                  background: billLoading ? "#22c55e55" : "#22c55e",
+                                  color: "#022c22",
+                                  fontSize: "0.9rem",
+                                  fontWeight: 600,
+                                  cursor: billLoading ? "not-allowed" : "pointer",
+                                }}
+                              >
+                                {billLoading ? "Creando factura..." : "✅ Crear Factura"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBillOrderId("");
+                                  setBillPaidAmount("");
+                                  setBillDiscountAmount("");
+                                  setBillTipAmount("");
+                                  setBillError("");
+                                  setBillSuccess("");
+                                }}
+                                style={{
+                                  padding: "0.75rem 1rem",
+                                  borderRadius: "0.5rem",
+                                  border: "1px solid #64748b",
+                                  background: "transparent",
+                                  color: "#e5e7eb",
+                                  fontSize: "0.9rem",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
-        ))}
+        )}
       </div>
     </main>
   );
