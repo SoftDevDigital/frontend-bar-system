@@ -2,7 +2,7 @@
 "use client";
 
 import type React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   getOrders,
   type Order,
@@ -79,11 +79,21 @@ function printBillTicket(ticket: BillTicket) {
         </table>
         <table class="mt-8">
           <tbody>
-            <tr><td>Subtotal</td><td style="text-align:right;">$${ticket.subtotal.toFixed(2)}</td></tr>
-            <tr><td>Impuestos</td><td style="text-align:right;">$${ticket.impuestos.toFixed(2)}</td></tr>
-            <tr class="total-row"><td><strong>Total</strong></td><td style="text-align:right;"><strong>$${ticket.total.toFixed(2)}</strong></td></tr>
-            <tr><td>Pago (${ticket.metodoPago})</td><td style="text-align:right;">$${ticket.montoPagado.toFixed(2)}</td></tr>
-            <tr><td>Cambio</td><td style="text-align:right;">$${ticket.cambio.toFixed(2)}</td></tr>
+            <tr><td>Subtotal</td><td style="text-align:right;">$${ticket.subtotal.toFixed(
+              2
+            )}</td></tr>
+            <tr><td>Impuestos</td><td style="text-align:right;">$${ticket.impuestos.toFixed(
+              2
+            )}</td></tr>
+            <tr class="total-row"><td><strong>Total</strong></td><td style="text-align:right;"><strong>$${ticket.total.toFixed(
+              2
+            )}</strong></td></tr>
+            <tr><td>Pago (${ticket.metodoPago})</td><td style="text-align:right;">$${ticket.montoPagado.toFixed(
+              2
+            )}</td></tr>
+            <tr><td>Cambio</td><td style="text-align:right;">$${ticket.cambio.toFixed(
+              2
+            )}</td></tr>
           </tbody>
         </table>
         <p class="center mt-8">¡Gracias por su visita!</p>
@@ -146,6 +156,41 @@ export default function POSPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // ===== Helpers UI para Ordenes (AGREGADO) =====
+  const getTableLabelFromOrder = (order: Order) => {
+    const tableId = (order as any).tableId ?? (order as any).table?.id ?? order.tableId;
+
+    const tableNumber =
+      (order as any).tableNumber ??
+      (order as any).table?.number ??
+      tables.find((t) => t.id === tableId)?.number;
+
+    const tableLocation =
+      (order as any).table?.location ??
+      tables.find((t) => t.id === tableId)?.location;
+
+    if (!tableNumber) return "Mesa —";
+    return `Mesa #${tableNumber}${tableLocation ? ` — ${tableLocation}` : ""}`;
+  };
+
+  const getOrderItemsLabel = (order: Order) => {
+    const items = (order as any).items ?? [];
+    if (!Array.isArray(items) || items.length === 0) return "Sin productos";
+
+    return items
+      .map((it: any) => {
+        const name = it.productName ?? it.product?.name ?? "Producto";
+        const qty = it.quantity ?? 0;
+        return `${qty}x ${name}`;
+      })
+      .join(", ");
+  };
+
+  const getOrderTotal = (order: Order) => {
+    const total = (order as any).totalAmount ?? (order as any).total ?? (order as any).subtotal ?? 0;
+    return Number(total) || 0;
+  };
+
   // Cargar datos
   useEffect(() => {
     async function fetchData() {
@@ -163,27 +208,72 @@ export default function POSPage() {
     fetchData();
   }, []);
 
-  // Cargar órdenes activas para mesas
+  // ============================
+  // ✅ Cargar órdenes activas para mesas SIN parpadeo
+  // ============================
+  const didInitialOrdersLoad = useRef(false);
+
   useEffect(() => {
-    if (mode === "table") {
-      async function fetchOrders() {
-        setLoading(true);
-        try {
-          const res = await getOrders({ status: "pending", limit: 100 });
-          if (res.success && res.data) setOrders(res.data);
-        } catch (err) {
-          console.error("Error cargando órdenes:", err);
-        } finally {
-          setLoading(false);
+    if (mode !== "table") return;
+
+    let alive = true;
+
+    const fetchOrders = async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent === true;
+
+      // Solo mostramos loading la primera vez
+      if (!silent && !didInitialOrdersLoad.current) setLoading(true);
+
+      try {
+        const res = await getOrders({ status: "pending", limit: 100 });
+        if (!alive) return;
+
+        if (res.success && res.data) {
+          const next = res.data ?? [];
+
+          setOrders((prev) => {
+            // Evitar re-render si es igual
+            const same =
+              prev.length === next.length &&
+              prev.every((p, i) => {
+                const n = next[i] as any;
+                return (
+                  (p as any).id === n.id &&
+                  (p as any).status === n.status &&
+                  ((p as any).totalAmount ?? (p as any).total ?? 0) ===
+                    (n.totalAmount ?? n.total ?? 0) &&
+                  ((p as any).items?.length ?? 0) === ((n.items?.length ?? 0) as number) &&
+                  (p as any).updatedAt === n.updatedAt
+                );
+              });
+
+            return same ? prev : next;
+          });
+
+          didInitialOrdersLoad.current = true;
         }
+      } catch (err) {
+        console.error("Error cargando órdenes:", err);
+      } finally {
+        // Si ya cargó al menos una vez, dejamos loading apagado siempre
+        if (!silent && !didInitialOrdersLoad.current) setLoading(false);
+        if (didInitialOrdersLoad.current) setLoading(false);
       }
-      fetchOrders();
-      const interval = setInterval(fetchOrders, 5000);
-      return () => clearInterval(interval);
-    }
+    };
+
+    // Primera carga (con loading)
+    fetchOrders({ silent: false });
+
+    // Polling silencioso
+    const interval = setInterval(() => fetchOrders({ silent: true }), 5000);
+
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
   }, [mode]);
 
-  // Helpers
+  // Helpers carrito
   const addToCart = (product: Product) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.productId === product.id);
@@ -192,7 +282,10 @@ export default function POSPage() {
           item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [...prev, { productId: product.id, productName: product.name, price: product.price, quantity: 1 }];
+      return [
+        ...prev,
+        { productId: product.id, productName: product.name, price: product.price, quantity: 1 },
+      ];
     });
   };
 
@@ -200,7 +293,9 @@ export default function POSPage() {
     if (quantity <= 0) {
       setCart((prev) => prev.filter((item) => item.productId !== productId));
     } else {
-      setCart((prev) => prev.map((item) => (item.productId === productId ? { ...item, quantity } : item)));
+      setCart((prev) =>
+        prev.map((item) => (item.productId === productId ? { ...item, quantity } : item))
+      );
     }
   };
 
@@ -295,7 +390,7 @@ export default function POSPage() {
         setSuccess(`✅ Orden creada: ${res.data.orderNumber}`);
         clearCart();
         setSelectedTableId("");
-        // Recargar órdenes
+        // Recargar órdenes (silencioso)
         const ordersRes = await getOrders({ status: "pending", limit: 100 });
         if (ordersRes.success && ordersRes.data) setOrders(ordersRes.data);
       } else {
@@ -327,7 +422,7 @@ export default function POSPage() {
       }
 
       // Combinar items actuales con nuevos
-      const existingItems = currentOrder.items.map((item) => ({
+      const existingItems = currentOrder.items.map((item: any) => ({
         productId: item.productId,
         quantity: item.quantity,
       }));
@@ -342,7 +437,10 @@ export default function POSPage() {
 
       // Actualizar orden
       const res = await updateOrderItems(selectedOrderId, {
-        items: [...existingItems.filter((ei) => !cart.some((c) => c.productId === ei.productId)), ...newItems],
+        items: [
+          ...existingItems.filter((ei) => !cart.some((c) => c.productId === ei.productId)),
+          ...newItems,
+        ],
       });
 
       if (res.success && res.data) {
@@ -374,7 +472,8 @@ export default function POSPage() {
       return;
     }
 
-    const total = (order as any).totalAmount ?? (order as any).total ?? 0;
+    const total = getOrderTotal(order);
+
     if (!paidAmount.trim()) {
       setError("Ingresá el monto pagado");
       return;
@@ -431,7 +530,16 @@ export default function POSPage() {
   // Render
   if (checkingRole) {
     return (
-      <div style={{ background: "#020617", minHeight: "100vh", color: "white", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div
+        style={{
+          background: "#020617",
+          minHeight: "100vh",
+          color: "white",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <p>Cargando...</p>
       </div>
     );
@@ -448,10 +556,18 @@ export default function POSPage() {
 
   const total = calculateTotal();
   const selectedOrder = orders.find((o) => o.id === selectedOrderId);
-  const orderTotal = selectedOrder ? ((selectedOrder as any).totalAmount ?? (selectedOrder as any).total ?? 0) : 0;
+  const orderTotal = selectedOrder ? getOrderTotal(selectedOrder) : 0;
 
   return (
-    <div style={{ background: "#020617", minHeight: "100vh", color: "white", display: "flex", flexDirection: "column" }}>
+    <div
+      style={{
+        background: "#020617",
+        minHeight: "100vh",
+        color: "white",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       {/* HEADER SIMPLE */}
       <div style={{ padding: "1rem 2rem", borderBottom: "1px solid #334155", background: "#0f172a" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -496,7 +612,15 @@ export default function POSPage() {
       {/* CONTENIDO PRINCIPAL */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* PANEL IZQUIERDO: Productos */}
-        <div style={{ width: "60%", borderRight: "1px solid #334155", background: "#0f172a", overflowY: "auto", padding: "1.5rem" }}>
+        <div
+          style={{
+            width: "60%",
+            borderRight: "1px solid #334155",
+            background: "#0f172a",
+            overflowY: "auto",
+            padding: "1.5rem",
+          }}
+        >
           <h2 style={{ fontSize: "1.25rem", marginBottom: "1rem", fontWeight: 600 }}>Productos</h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "1rem" }}>
             {products.map((product) => (
@@ -803,39 +927,60 @@ export default function POSPage() {
                       <p style={{ color: "#9ca3af", fontSize: "0.9rem", textAlign: "center" }}>No hay órdenes activas</p>
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                        {orders.map((order) => (
-                          <button
-                            key={order.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedOrderId(order.id);
-                              setPaidAmount(String(orderTotal));
-                            }}
-                            style={{
-                              padding: "0.75rem",
-                              borderRadius: "0.5rem",
-                              border: "1px solid #334155",
-                              background: "#1e293b",
-                              color: "white",
-                              textAlign: "left",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <div>
-                                <p style={{ margin: 0, fontWeight: 600, fontSize: "0.9rem" }}>
-                                  {(order as any).orderNumber ?? order.id.slice(0, 8)}
-                                </p>
-                                <p style={{ margin: "0.25rem 0 0 0", fontSize: "0.85rem", color: "#9ca3af" }}>
-                                  Mesa #{(order as any).tableNumber ?? "—"} • {order.items.length} items
-                                </p>
+                        {orders.map((order) => {
+                          const tableLabel = getTableLabelFromOrder(order);
+                          const itemsLabel = getOrderItemsLabel(order);
+                          const thisTotal = getOrderTotal(order);
+
+                          return (
+                            <button
+                              key={order.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedOrderId(order.id);
+                                setPaidAmount(String(thisTotal));
+                              }}
+                              style={{
+                                padding: "0.75rem",
+                                borderRadius: "0.5rem",
+                                border: "1px solid #334155",
+                                background: "#1e293b",
+                                color: "white",
+                                textAlign: "left",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.75rem" }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ margin: 0, fontWeight: 600, fontSize: "0.9rem" }}>
+                                    {(order as any).orderNumber ?? order.id.slice(0, 8)}
+                                  </p>
+
+                                  <p style={{ margin: "0.25rem 0 0 0", fontSize: "0.85rem", color: "#9ca3af" }}>
+                                    {tableLabel}
+                                  </p>
+
+                                  <p
+                                    style={{
+                                      margin: "0.25rem 0 0 0",
+                                      fontSize: "0.85rem",
+                                      color: "#cbd5e1",
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                    }}
+                                  >
+                                    {itemsLabel}
+                                  </p>
+                                </div>
+
+                                <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "#22c55e", whiteSpace: "nowrap" }}>
+                                  ${thisTotal.toFixed(2)}
+                                </span>
                               </div>
-                              <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "#22c55e" }}>
-                                ${((order as any).totalAmount ?? (order as any).total ?? 0).toFixed(2)}
-                              </span>
-                            </div>
-                          </button>
-                        ))}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -852,7 +997,9 @@ export default function POSPage() {
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                      <span style={{ fontWeight: 600 }}>Orden #{(selectedOrder as any).orderNumber ?? selectedOrder?.id.slice(0, 8)}</span>
+                      <span style={{ fontWeight: 600 }}>
+                        Orden #{(selectedOrder as any)?.orderNumber ?? selectedOrder?.id.slice(0, 8)}
+                      </span>
                       <button
                         type="button"
                         onClick={() => {
@@ -872,8 +1019,9 @@ export default function POSPage() {
                         Cambiar
                       </button>
                     </div>
+
                     <p style={{ margin: 0, fontSize: "0.85rem", color: "#9ca3af" }}>
-                      Mesa #{(selectedOrder as any).tableNumber ?? "—"} • Total: ${orderTotal.toFixed(2)}
+                      {selectedOrder ? `${getTableLabelFromOrder(selectedOrder)} • Total: $${orderTotal.toFixed(2)}` : `Total: $${orderTotal.toFixed(2)}`}
                     </p>
                   </div>
 

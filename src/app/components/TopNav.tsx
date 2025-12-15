@@ -99,7 +99,7 @@ export default function TopNav() {
           {isStaff && (
             <>
               <NavLink href="/dashboard" label="Dashboard" />
-              <NavLink href="/pos" label="💳 POS" />
+              <NavLink href="/pos" label="💳 FACTURACIÓN" />
               <NavLink href="/inventory" label="Inventario" />
               <NavLink href="/products" label="Productos" />
 
