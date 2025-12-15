@@ -415,76 +415,93 @@ export default function ReservationsPage() {
     fetchReservations(meta.page + 1);
   };
 
-  const handleCreateReservation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreating(true);
-    setCreateError("");
-    setCreateSuccess("");
+ const handleCreateReservation = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setCreating(true);
+  setCreateError("");
+  setCreateSuccess("");
 
-    try {
-      const trimmedFirstName = createForm.firstName.trim();
-      const trimmedLastName = createForm.lastName.trim();
-      const trimmedPhone = createForm.phone.trim();
-      const trimmedEmail = createForm.email.trim();
+  try {
+    const trimmedFirstName = createForm.firstName.trim();
+    const trimmedLastName = createForm.lastName.trim();
+    const trimmedPhone = createForm.phone.trim();
+    const trimmedEmail = createForm.email.trim();
 
-      const hasCustomerDetails =
-        trimmedFirstName || trimmedLastName || trimmedPhone || trimmedEmail;
+    const hasCustomerDetails =
+      trimmedFirstName || trimmedLastName || trimmedPhone || trimmedEmail;
 
-      const payload: CreateReservationPayload = {
-        partySize: Number(createForm.partySize),
-        reservationDate: createForm.reservationDate,
-        reservationTime: createForm.reservationTime,
-        notes: createForm.notes?.trim() || undefined,
-        ...(hasCustomerDetails
-          ? {
-              customerDetails: {
-                firstName: trimmedFirstName || undefined,
-                lastName: trimmedLastName || undefined,
-                phone: trimmedPhone || undefined,
-                email: trimmedEmail || undefined,
-              },
-            }
-          : {}),
+    // ✅ SOLO lo que existe en CreateReservationPayload
+    const basePayload: CreateReservationPayload = {
+      partySize: Number(createForm.partySize),
+      reservationDate: createForm.reservationDate,
+      reservationTime: createForm.reservationTime,
+    };
+
+    // ✅ extras (notes + customerDetails) SIN romper TypeScript
+    const extra: {
+      notes?: string;
+      customerDetails?: {
+        firstName?: string;
+        lastName?: string;
+        phone?: string;
+        email?: string;
       };
+    } = {};
 
-      const res = await createReservation(payload);
+    const cleanNotes = createForm.notes?.trim();
+    if (cleanNotes) extra.notes = cleanNotes;
 
-      if (res.success && res.data) {
-        const created = res.data;
-
-        setCreateSuccess(
-          `Reserva creada. Código de confirmación: ${created.confirmationCode}`
-        );
-
-        if (!dateFilter) {
-          setDateFilter(created.reservationDate);
-        }
-
-        fetchReservations(1);
-
-        setCreateForm((prev) => ({
-          ...prev,
-          partySize: 2,
-          reservationTime: "",
-          notes: "",
-          firstName: "",
-          lastName: "",
-          phone: "",
-          email: "",
-        }));
-      } else {
-        setCreateError(
-          res.message || "No se pudo crear la reserva. Revisá los datos."
-        );
-      }
-    } catch (err: any) {
-      setCreateError(
-        err?.message || "Error inesperado al crear la reserva."
-      );
-    } finally {
-      setCreating(false);
+    if (hasCustomerDetails) {
+      extra.customerDetails = {
+        firstName: trimmedFirstName || undefined,
+        lastName: trimmedLastName || undefined,
+        phone: trimmedPhone || undefined,
+        email: trimmedEmail || undefined,
+      };
     }
-  };
+
+    const payload = {
+      ...basePayload,
+      ...extra,
+    } as CreateReservationPayload & typeof extra;
+
+    const res = await createReservation(payload);
+
+    if (res.success && res.data) {
+      const created = (res.data as any).data ?? res.data; // por si viene envuelto
+
+      setCreateSuccess(
+        `Reserva creada. Código de confirmación: ${created.confirmationCode}`
+      );
+
+      if (!dateFilter) {
+        setDateFilter(created.reservationDate);
+      }
+
+      fetchReservations(1);
+
+      setCreateForm((prev) => ({
+        ...prev,
+        partySize: 2,
+        reservationTime: "",
+        notes: "",
+        firstName: "",
+        lastName: "",
+        phone: "",
+        email: "",
+      }));
+    } else {
+      setCreateError(
+        res.message || "No se pudo crear la reserva. Revisá los datos."
+      );
+    }
+  } catch (err: any) {
+    setCreateError(err?.message || "Error inesperado al crear la reserva.");
+  } finally {
+    setCreating(false);
+  }
+};
+
 
   const handleViewDetails = async (reservationId: string) => {
     setDetailOpen(true);

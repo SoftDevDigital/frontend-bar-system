@@ -1028,18 +1028,6 @@ export async function getOrderById(
 
 /* ========== BILLS (LISTADO ADMIN/EMPLOYEE) ========== */
 
-export type Bill = {
-  id: string;
-  orderId: string;
-  tableNumber: number;
-  subtotal: number;
-  tax: number;
-  tip: number;
-  total: number;
-  paymentMethod: string; // "cash" | "card" | etc (según backend)
-  status: string; // "paid" | "pending" | etc
-  createdAt: string;
-};
 
 /**
  * Obtiene la lista de facturas con filtros opcionales.
@@ -2745,14 +2733,6 @@ export type ReservationCustomerDetails = {
 /* ========== FINANCIAL MOVEMENTS (SUMMARY) - SOLO ADMIN ========== */
 
 
-export type FinancialSummaryData = {
-  totalIncome: number;
-  totalExpenses: number;
-  netIncome: number;
-  byType: Record<string, number>;
-  byCategory: Record<string, number>;
-  count: number;
-};
 
 export type FinancialSummaryEnvelope = {
   success: boolean;
@@ -2760,8 +2740,7 @@ export type FinancialSummaryEnvelope = {
   data: FinancialSummaryData;
 };
 
-export type GetFinancialSummaryResponse =
-  ApiBaseResponse<FinancialSummaryEnvelope>;
+
 
 /* ========== FINANCIAL MOVEMENTS (SUMMARY) - SOLO ADMIN ========== */
 
@@ -2943,13 +2922,6 @@ export type Category = {
   updatedAt?: string;
 };
 
-export type ApiBaseResponse<TData = any> = {
-  success: boolean;
-  message: string;
-  data?: TData;
-  statusCode: number;
-  timestamp: string;
-};
 
 
 

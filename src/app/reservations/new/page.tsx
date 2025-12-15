@@ -4,21 +4,23 @@ import { useState, FormEvent, useEffect } from "react";
 import { createReservation, type CreateReservationPayload } from "@/app/lib/api";
 
 export default function NewReservationPage() {
+  // ✅ form SOLO con campos que existen en CreateReservationPayload
   const [form, setForm] = useState<CreateReservationPayload>({
     partySize: 2,
     reservationDate: "",
     reservationTime: "",
-    notes: "",
-  } as any); // 👈 si tu tipo ya tiene `notes`, podés sacar el `as any`
+  });
 
-  // 👇 nuevo: guardamos el customerId si el usuario logueado es "customer"
+  // ✅ notes separado (porque el type no lo trae)
+  const [notes, setNotes] = useState<string>("");
+
+  // ✅ customerId si el usuario logueado es "customer"
   const [customerId, setCustomerId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  // 👇 leemos el usuario logueado desde localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -47,26 +49,31 @@ export default function NewReservationPage() {
     setLoading(true);
 
     try {
+      // ✅ payload base tipado correcto
       const basePayload: CreateReservationPayload = {
         partySize: Number(form.partySize),
         reservationDate: form.reservationDate,
         reservationTime: form.reservationTime,
-        // si tu DTO admite `notes`, lo dejamos como venías haciéndolo
-        notes: form.notes?.trim() || undefined,
-      } as any;
-
-      // 👇 si hay cliente logueado como "customer", agregamos customerId
-      const payload: CreateReservationPayload = {
-        ...basePayload,
-        ...(customerId ? { customerId } : {}),
       };
+
+      // ✅ armamos extras SIN romper el build aunque el type no los tenga
+      const extra: { notes?: string; customerId?: string } = {};
+      const cleanNotes = notes.trim();
+      if (cleanNotes) extra.notes = cleanNotes;
+      if (customerId) extra.customerId = customerId;
+
+      // ✅ payload final: intersección de tipos (no falla el build)
+      const payload = {
+        ...basePayload,
+        ...extra,
+      } as CreateReservationPayload & { notes?: string; customerId?: string };
 
       const res = await createReservation(payload);
 
       if (res.success && res.data) {
-        const created = res.data.data;
+        const created = (res.data as any).data ?? (res.data as any); // por si tu backend envuelve data
         setSuccessMsg(
-          `Reserva creada correctamente. Código de confirmación: ${created.confirmationCode}`
+          `Reserva creada correctamente. Código de confirmación: ${created?.confirmationCode ?? "—"}`
         );
 
         // reset suave
@@ -74,12 +81,10 @@ export default function NewReservationPage() {
           ...prev,
           partySize: 2,
           reservationTime: "",
-          notes: "",
         }));
+        setNotes("");
       } else {
-        setErrorMsg(
-          res.message || "No se pudo crear la reserva. Revisá los datos."
-        );
+        setErrorMsg(res.message || "No se pudo crear la reserva. Revisá los datos.");
       }
     } catch (err: any) {
       setErrorMsg(err?.message || "Error inesperado al crear la reserva.");
@@ -110,14 +115,11 @@ export default function NewReservationPage() {
             gap: "0.35rem",
           }}
         >
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 600 }}>
-            Reservar mesa
-          </h1>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 600 }}>Reservar mesa</h1>
           <p style={{ fontSize: "0.9rem", color: "#9ca3af" }}>
             Elegí fecha, horario y cantidad de personas para tu visita.
           </p>
 
-          {/* 👇 pequeño texto indicando si es cliente registrado o visitante */}
           <p
             style={{
               fontSize: "0.8rem",
@@ -127,7 +129,9 @@ export default function NewReservationPage() {
           >
             Estás reservando como{" "}
             <span style={{ color: "#e5e7eb", fontWeight: 500 }}>
-              {isLoggedCustomer ? "cliente registrado (historial guardado)" : "visitante (sin historial)"}
+              {isLoggedCustomer
+                ? "cliente registrado (historial guardado)"
+                : "visitante (sin historial)"}
             </span>
             .
           </p>
@@ -173,18 +177,10 @@ export default function NewReservationPage() {
             </p>
           )}
 
-          <form
-            onSubmit={handleSubmit}
-            style={{ display: "grid", gap: "0.9rem" }}
-          >
+          <form onSubmit={handleSubmit} style={{ display: "grid", gap: "0.9rem" }}>
             {/* Fecha */}
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <label
-                style={{
-                  fontSize: "0.85rem",
-                  marginBottom: "0.25rem",
-                }}
-              >
+              <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
                 Fecha
               </label>
               <input
@@ -210,12 +206,7 @@ export default function NewReservationPage() {
 
             {/* Hora */}
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <label
-                style={{
-                  fontSize: "0.85rem",
-                  marginBottom: "0.25rem",
-                }}
-              >
+              <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
                 Hora
               </label>
               <input
@@ -241,12 +232,7 @@ export default function NewReservationPage() {
 
             {/* Personas */}
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <label
-                style={{
-                  fontSize: "0.85rem",
-                  marginBottom: "0.25rem",
-                }}
-              >
+              <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
                 Personas
               </label>
               <input
@@ -274,23 +260,13 @@ export default function NewReservationPage() {
 
             {/* Notas */}
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <label
-                style={{
-                  fontSize: "0.85rem",
-                  marginBottom: "0.25rem",
-                }}
-              >
+              <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
                 Notas (opcional)
               </label>
               <textarea
                 rows={2}
-                value={form.notes as any}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    notes: e.target.value,
-                  }))
-                }
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
                 placeholder="Ej: mesa cerca de la ventana…"
                 style={{
                   padding: "0.6rem 0.75rem",

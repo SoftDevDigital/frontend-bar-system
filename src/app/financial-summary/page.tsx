@@ -3,6 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { FinancialSummaryData, getFinancialSummary } from "../lib/api";
 
+// ✅ Envelope posible: { data: FinancialSummaryData }
+type FinancialSummaryEnvelope = {
+  data: FinancialSummaryData;
+  success?: boolean;
+  statusCode?: number;
+  message?: string;
+  timestamp?: string;
+  executionTime?: string;
+};
 
 type State = {
   loading: boolean;
@@ -11,12 +20,29 @@ type State = {
 };
 
 function formatMoney(n: number) {
-  // si querés ARS, cambiá currency: "ARS"
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 2,
   }).format(n);
+}
+
+// ✅ Type guards (evita casts peligrosos y arregla el build)
+function isEnvelope(x: unknown): x is FinancialSummaryEnvelope {
+  return !!x && typeof x === "object" && "data" in x && !!(x as any).data;
+}
+
+function isFinancialSummaryData(x: unknown): x is FinancialSummaryData {
+  return (
+    !!x &&
+    typeof x === "object" &&
+    "totalIncome" in x &&
+    "totalExpenses" in x &&
+    "netIncome" in x &&
+    "byType" in x &&
+    "byCategory" in x &&
+    "count" in x
+  );
 }
 
 export default function FinancialSummaryPage() {
@@ -39,15 +65,15 @@ export default function FinancialSummaryPage() {
     return Object.entries(bc).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
   }, [state.data]);
 
-   const fetchData = async () => {
+  const fetchData = async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
+
     try {
       const res = await getFinancialSummary({
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       });
 
-      // ✅ FIX: el backend devuelve res.data directo
       if (!res.success || !res.data) {
         setState({
           loading: false,
@@ -57,10 +83,32 @@ export default function FinancialSummaryPage() {
         return;
       }
 
+      // ✅ Soporta:
+      // - res.data = FinancialSummaryData
+      // - res.data = { data: FinancialSummaryData }
+      const raw = res.data as unknown;
+
+      let payload: FinancialSummaryData | null = null;
+
+      if (isEnvelope(raw) && isFinancialSummaryData(raw.data)) {
+        payload = raw.data;
+      } else if (isFinancialSummaryData(raw)) {
+        payload = raw;
+      }
+
+      if (!payload) {
+        setState({
+          loading: false,
+          error: "Formato de respuesta inesperado en /financial-movements/summary",
+          data: null,
+        });
+        return;
+      }
+
       setState({
         loading: false,
         error: null,
-        data: res.data,
+        data: payload,
       });
     } catch (err: any) {
       setState({
@@ -70,7 +118,6 @@ export default function FinancialSummaryPage() {
       });
     }
   };
-
 
   useEffect(() => {
     fetchData();
@@ -171,7 +218,8 @@ export default function FinancialSummaryPage() {
         >
           {state.error}
           <div style={{ marginTop: "0.4rem", color: "#fca5a5", fontSize: "0.85rem" }}>
-            Tip: asegurate de tener <strong>festgo_token</strong> en localStorage y que tu usuario sea <strong>admin</strong>.
+            Tip: asegurate de tener <strong>festgo_token</strong> en localStorage y que tu usuario sea{" "}
+            <strong>admin</strong>.
           </div>
         </div>
       )}

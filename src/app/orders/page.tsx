@@ -746,8 +746,8 @@ export default function OrdersPage() {
                 }}
               >
                 <h3 style={{ marginBottom: "0.25rem" }}>
-                  Pedido #{o.orderNumber ?? o.id}
-                </h3>
+  Pedido #{(o as any).orderNumber ?? o.id}
+</h3>
                 <p
                   style={{
                     fontSize: "0.85rem",
@@ -766,13 +766,13 @@ export default function OrdersPage() {
                 </p>
                 <p style={{ fontSize: "0.9rem", marginBottom: "0.2rem" }}>
                   <strong>Tipo:</strong>{" "}
-                  {o.orderType === "dine_in"
-                    ? "Dentro del local"
-                    : o.orderType === "takeaway"
-                    ? "Para llevar"
-                    : o.orderType === "delivery"
-                    ? "Delivery"
-                    : o.orderType ?? "—"}
+                  {(o as any).orderType === "dine_in"
+  ? "Dentro del local"
+  : (o as any).orderType === "takeaway"
+  ? "Para llevar"
+  : (o as any).orderType === "delivery"
+  ? "Delivery"
+  : (o as any).orderType ?? "—"}
                 </p>
                 <p style={{ fontSize: "0.9rem", marginBottom: "0.2rem" }}>
                   <strong>Mesa:</strong>{" "}
@@ -1508,13 +1508,13 @@ export default function OrdersPage() {
                             Tipo
                           </p>
                           <p style={{ fontSize: "0.9rem", fontWeight: 500 }}>
-                            {o.orderType === "dine_in"
-                              ? "🏠 Dentro del local"
-                              : o.orderType === "takeaway"
-                              ? "📦 Para llevar"
-                              : o.orderType === "delivery"
-                              ? "🚚 Delivery"
-                              : o.orderType ?? "—"}
+                            {(o as any).orderType === "dine_in"
+  ? "🏠 Dentro del local"
+  : (o as any).orderType === "takeaway"
+  ? "📦 Para llevar"
+  : (o as any).orderType === "delivery"
+  ? "🚚 Delivery"
+  : (o as any).orderType ?? "—"}
                           </p>
                         </div>
                         {(o as any).tableNumber && (
