@@ -1,5 +1,5 @@
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3004/api/v1";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.festgo-bar.com/api/v1";
 
 /** Respuesta base del backend */
 export type ApiBaseResponse<TData = any> = {
