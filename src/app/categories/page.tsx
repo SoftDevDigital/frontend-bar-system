@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Category, createCategory, CreateCategoryPayload, getCategories } from "../lib/api";
+import {
+  Category,
+  createCategory,
+  CreateCategoryPayload,
+  getCategories,
+  updateCategory,
+  deleteCategory, // ✅ NUEVO
+} from "../lib/api";
 
 type UserRole = "admin" | "employee" | "customer" | string | null;
 
@@ -22,7 +29,7 @@ export default function CategoriesPage() {
   const [role, setRole] = useState<UserRole>(null);
   const isAdmin = role === "admin";
 
-  // form
+  // form create
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
@@ -34,6 +41,20 @@ export default function CategoriesPage() {
   const [color, setColor] = useState("#334155");
   const [icon, setIcon] = useState("🍽️");
   const [parentCategoryId, setParentCategoryId] = useState("");
+
+  // ✅ EDIT (UPDATE)
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
+
+  // ✅ DELETE
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingName, setDeletingName] = useState<string>("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
   const readRoleFromStorage = () => {
     if (typeof window === "undefined") return;
@@ -88,7 +109,8 @@ export default function CategoriesPage() {
     const handleAuthChange = () => readRoleFromStorage();
     window.addEventListener("festgo-auth-change", handleAuthChange);
 
-    return () => window.removeEventListener("festgo-auth-change", handleAuthChange);
+    return () =>
+      window.removeEventListener("festgo-auth-change", handleAuthChange);
   }, []);
 
   const activeCategories = useMemo(
@@ -114,12 +136,12 @@ export default function CategoriesPage() {
     const payload: CreateCategoryPayload = {
       name: name.trim(),
       description: description.trim() ? description.trim() : undefined,
-      imageUrl: imageUrl.trim() ? imageUrl.trim() : undefined, // debe ser URL válida
+      imageUrl: imageUrl.trim() ? imageUrl.trim() : undefined,
       sortOrder: sortOrder.trim() ? Number(sortOrder) : undefined,
       color: color.trim() ? color.trim() : undefined,
       icon: icon.trim() ? icon.trim() : undefined,
       parentCategoryId: parentCategoryId.trim()
-        ? parentCategoryId.trim() // debe ser UUID si lo mandás
+        ? parentCategoryId.trim()
         : undefined,
     };
 
@@ -153,10 +175,120 @@ export default function CategoriesPage() {
     }
   };
 
+  // ✅ Abrir edición
+  const openEdit = (c: Category) => {
+    if (!isAdmin) return;
+    setUpdateError(null);
+    setUpdateSuccess(null);
+    setEditingId(c.id);
+    setEditName(c.name || "");
+  };
+
+  // ✅ Guardar edición (PUT /categories/:id) — mandamos SOLO name
+  const handleUpdateCategory = async () => {
+    setUpdateError(null);
+    setUpdateSuccess(null);
+
+    if (!isAdmin) {
+      setUpdateError("Solo un usuario con rol ADMIN puede actualizar categorías.");
+      return;
+    }
+
+    if (!editingId) return;
+
+    const cleanName = editName.trim();
+    if (!cleanName) {
+      setUpdateError("El nombre es obligatorio.");
+      return;
+    }
+
+    try {
+      setUpdating(true);
+
+      const res = await updateCategory(editingId, { name: cleanName });
+
+      if (!res.success || !res.data) {
+        setUpdateError(res.message || "No se pudo actualizar la categoría.");
+        return;
+      }
+
+      setUpdateSuccess(`Categoría actualizada: ${res.data.name}`);
+      setEditingId(null);
+      await fetchData();
+    } catch (err: any) {
+      setUpdateError(
+        err?.message ||
+          "Error inesperado al actualizar. Verificá token admin."
+      );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditName("");
+    setUpdateError(null);
+    setUpdateSuccess(null);
+  };
+
+  // ✅ Abrir modal eliminar
+  const openDelete = (c: Category) => {
+    if (!isAdmin) return;
+    setDeleteError(null);
+    setDeleteSuccess(null);
+    setDeletingId(c.id);
+    setDeletingName(c.name || "");
+  };
+
+  const cancelDelete = () => {
+    setDeletingId(null);
+    setDeletingName("");
+    setDeleteError(null);
+    setDeleteSuccess(null);
+  };
+
+  // ✅ Confirmar eliminar (DELETE /categories/:id)
+  const handleDeleteCategory = async () => {
+    setDeleteError(null);
+    setDeleteSuccess(null);
+
+    if (!isAdmin) {
+      setDeleteError("Solo un usuario con rol ADMIN puede eliminar categorías.");
+      return;
+    }
+
+    if (!deletingId) return;
+
+    try {
+      setDeleting(true);
+
+      const res = await deleteCategory(deletingId);
+
+      if (!res.success) {
+        // ⚠️ Si hay productos asociados, el backend suele devolver error acá
+        setDeleteError(
+          res.message ||
+            "No se pudo eliminar la categoría. Puede tener productos asociados."
+        );
+        return;
+      }
+
+      setDeleteSuccess("Categoría eliminada exitosamente");
+      setDeletingId(null);
+      await fetchData();
+    } catch (err: any) {
+      setDeleteError(
+        err?.message ||
+          "Error inesperado al eliminar. Verificá token admin o productos asociados."
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <>
-     
-
       <main
         style={{
           minHeight: "100vh",
@@ -173,12 +305,19 @@ export default function CategoriesPage() {
             GET público /categories (ordenadas por sortOrder).
           </p>
 
-          <p style={{ fontSize: "0.85rem", marginTop: "0.5rem", color: isAdmin ? "#4ade80" : "#94a3b8" }}>
-            Rol actual: <strong style={{ color: "#e5e7eb" }}>{role ?? "visitante"}</strong>
+          <p
+            style={{
+              fontSize: "0.85rem",
+              marginTop: "0.5rem",
+              color: isAdmin ? "#4ade80" : "#94a3b8",
+            }}
+          >
+            Rol actual:{" "}
+            <strong style={{ color: "#e5e7eb" }}>{role ?? "visitante"}</strong>
           </p>
         </header>
 
-        {/* FORM ADMIN */}
+        {/* FORM ADMIN CREATE */}
         {isAdmin && (
           <section
             style={{
@@ -317,8 +456,226 @@ export default function CategoriesPage() {
           </section>
         )}
 
+        {/* ✅ EDIT */}
+        {isAdmin && editingId && (
+          <section
+            style={{
+              marginBottom: "1.25rem",
+              padding: "1rem",
+              borderRadius: "0.9rem",
+              background: "#0b1220",
+              border: "1px solid #334155",
+            }}
+          >
+            <h2 style={{ fontSize: "1.05rem", marginBottom: "0.5rem" }}>
+              Editar categoría (PUT /categories/:id)
+            </h2>
+
+            <div
+              style={{
+                fontSize: "0.8rem",
+                color: "#94a3b8",
+                marginBottom: "0.75rem",
+              }}
+            >
+              ID: <span style={{ color: "#e5e7eb" }}>{editingId}</span>
+            </div>
+
+            {updateError && (
+              <p
+                style={{
+                  marginBottom: "0.5rem",
+                  color: "#fecaca",
+                  background: "#450a0a",
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "0.5rem",
+                  border: "1px solid #b91c1c",
+                  fontSize: "0.85rem",
+                }}
+              >
+                {updateError}
+              </p>
+            )}
+
+            {updateSuccess && (
+              <p
+                style={{
+                  marginBottom: "0.5rem",
+                  color: "#bbf7d0",
+                  background: "#064e3b",
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "0.5rem",
+                  border: "1px solid #16a34a",
+                  fontSize: "0.85rem",
+                }}
+              >
+                {updateSuccess}
+              </p>
+            )}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: "0.75rem",
+              }}
+            >
+              <Field label="Nombre *">
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  style={inputStyle}
+                />
+              </Field>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-end",
+                  gap: "0.5rem",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={handleUpdateCategory}
+                  disabled={updating}
+                  style={{
+                    padding: "0.7rem 1.2rem",
+                    borderRadius: "0.7rem",
+                    border: "none",
+                    background: "#22c55e",
+                    color: "#022c22",
+                    fontWeight: 800,
+                    cursor: updating ? "default" : "pointer",
+                    width: "100%",
+                  }}
+                >
+                  {updating ? "Guardando..." : "Guardar"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  disabled={updating}
+                  style={{
+                    padding: "0.7rem 1.2rem",
+                    borderRadius: "0.7rem",
+                    border: "1px solid #334155",
+                    background: "transparent",
+                    color: "#e5e7eb",
+                    fontWeight: 800,
+                    cursor: updating ? "default" : "pointer",
+                    width: "100%",
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ✅ DELETE CONFIRM */}
+        {isAdmin && deletingId && (
+          <section
+            style={{
+              marginBottom: "1.25rem",
+              padding: "1rem",
+              borderRadius: "0.9rem",
+              background: "#1b0b0b",
+              border: "1px solid #7f1d1d",
+            }}
+          >
+            <h2 style={{ fontSize: "1.05rem", marginBottom: "0.5rem" }}>
+              Eliminar categoría (DELETE /categories/:id)
+            </h2>
+
+            <p style={{ fontSize: "0.9rem", color: "#fecaca", marginBottom: "0.75rem" }}>
+              Vas a eliminar <strong>{deletingName || "esta categoría"}</strong> permanentemente.
+              <br />
+              <strong>IMPORTANTE:</strong> si tiene productos asociados, el backend no te va a dejar.
+            </p>
+
+            <div style={{ fontSize: "0.8rem", color: "#fca5a5", marginBottom: "0.75rem" }}>
+              ID: <span style={{ color: "#fff" }}>{deletingId}</span>
+            </div>
+
+            {deleteError && (
+              <p
+                style={{
+                  marginBottom: "0.5rem",
+                  color: "#fecaca",
+                  background: "#450a0a",
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "0.5rem",
+                  border: "1px solid #b91c1c",
+                  fontSize: "0.85rem",
+                }}
+              >
+                {deleteError}
+              </p>
+            )}
+
+            {deleteSuccess && (
+              <p
+                style={{
+                  marginBottom: "0.5rem",
+                  color: "#bbf7d0",
+                  background: "#064e3b",
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "0.5rem",
+                  border: "1px solid #16a34a",
+                  fontSize: "0.85rem",
+                }}
+              >
+                {deleteSuccess}
+              </p>
+            )}
+
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button
+                type="button"
+                onClick={handleDeleteCategory}
+                disabled={deleting}
+                style={{
+                  padding: "0.7rem 1.2rem",
+                  borderRadius: "0.7rem",
+                  border: "none",
+                  background: "#ef4444",
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: deleting ? "default" : "pointer",
+                  width: "100%",
+                }}
+              >
+                {deleting ? "Eliminando..." : "Sí, eliminar"}
+              </button>
+
+              <button
+                type="button"
+                onClick={cancelDelete}
+                disabled={deleting}
+                style={{
+                  padding: "0.7rem 1.2rem",
+                  borderRadius: "0.7rem",
+                  border: "1px solid #7f1d1d",
+                  background: "transparent",
+                  color: "#fecaca",
+                  fontWeight: 900,
+                  cursor: deleting ? "default" : "pointer",
+                  width: "100%",
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </section>
+        )}
+
         {/* ACCIONES */}
-        <section style={{ marginBottom: "1.25rem", display: "flex", gap: "0.75rem" }}>
+        <section
+          style={{ marginBottom: "1.25rem", display: "flex", gap: "0.75rem" }}
+        >
           <button
             type="button"
             onClick={fetchData}
@@ -336,8 +693,17 @@ export default function CategoriesPage() {
             {state.loading ? "Cargando..." : "Recargar"}
           </button>
 
-          <div style={{ fontSize: "0.9rem", color: "#94a3b8", alignSelf: "center" }}>
-            Total: <strong style={{ color: "#e5e7eb" }}>{activeCategories.length}</strong>
+          <div
+            style={{
+              fontSize: "0.9rem",
+              color: "#94a3b8",
+              alignSelf: "center",
+            }}
+          >
+            Total:{" "}
+            <strong style={{ color: "#e5e7eb" }}>
+              {activeCategories.length}
+            </strong>
           </div>
         </section>
 
@@ -394,10 +760,24 @@ export default function CategoriesPage() {
                       }}
                     />
 
-                    <header style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}>
+                    <header
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "0.75rem",
+                      }}
+                    >
                       <div>
-                        <h2 style={{ fontSize: "1.15rem", fontWeight: 800, marginBottom: "0.25rem" }}>
-                          <span style={{ marginRight: "0.5rem" }}>{c.icon || "📦"}</span>
+                        <h2
+                          style={{
+                            fontSize: "1.15rem",
+                            fontWeight: 800,
+                            marginBottom: "0.25rem",
+                          }}
+                        >
+                          <span style={{ marginRight: "0.5rem" }}>
+                            {c.icon || "📦"}
+                          </span>
                           {c.name}
                         </h2>
                         <p style={{ fontSize: "0.9rem", color: "#cbd5f5" }}>
@@ -406,16 +786,69 @@ export default function CategoriesPage() {
                       </div>
 
                       <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Orden</div>
+                        <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                          Orden
+                        </div>
                         <div style={{ fontWeight: 800, fontSize: "1rem" }}>
                           {c.sortOrder ?? "-"}
                         </div>
                       </div>
                     </header>
 
-                    <div style={{ marginTop: "0.8rem", fontSize: "0.78rem", color: "#94a3b8" }}>
+                    <div
+                      style={{
+                        marginTop: "0.8rem",
+                        fontSize: "0.78rem",
+                        color: "#94a3b8",
+                      }}
+                    >
                       ID: <span style={{ color: "#e5e7eb" }}>{c.id}</span>
                     </div>
+
+                    {/* ✅ BOTONES ADMIN */}
+                    {isAdmin && (
+                      <div
+                        style={{
+                          marginTop: "0.9rem",
+                          display: "flex",
+                          gap: "0.5rem",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => openEdit(c)}
+                          style={{
+                            padding: "0.55rem 0.9rem",
+                            borderRadius: "0.7rem",
+                            border: "1px solid #334155",
+                            background: "transparent",
+                            color: "#e5e7eb",
+                            fontWeight: 800,
+                            cursor: "pointer",
+                            width: "100%",
+                          }}
+                        >
+                          Editar
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => openDelete(c)}
+                          style={{
+                            padding: "0.55rem 0.9rem",
+                            borderRadius: "0.7rem",
+                            border: "1px solid #7f1d1d",
+                            background: "transparent",
+                            color: "#fecaca",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                            width: "100%",
+                          }}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    )}
                   </article>
                 ))}
               </section>
@@ -430,7 +863,9 @@ export default function CategoriesPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
-      <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>{label}</label>
+      <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+        {label}
+      </label>
       {children}
     </div>
   );

@@ -601,6 +601,144 @@ export type CreateProductNutritionalInfo = {
 };
 
 
+/* ====== UPDATE PRODUCT (PUT /products/:id) – SOLO ADMIN ====== */
+
+export type UpdateProductPayload = Partial<{
+  name: string;
+  code: string;
+  description: string;
+  price: number;
+  costPrice: number;
+  categoryId: string;
+
+  status: string;
+  isAvailable: boolean;
+
+  preparationTime: number;
+  calories: number;
+
+  allergens: string[];
+  ingredients: string[];
+  tags: string[];
+
+  isVegan: boolean;
+  isGlutenFree: boolean;
+  isSpicy: boolean;
+  spicyLevel: number;
+
+  isPopular: boolean;
+  discountPercentage: number;
+  minimumAge: number;
+
+  imageUrl: string;
+  images: string[];
+
+  nutritionalInfo: {
+    protein: number;
+    carbs: number;
+    fat: number;
+    fiber: number;
+    sodium: number;
+  };
+}>;
+
+export type UpdateProductResponse = ApiBaseResponse<Product>;
+
+export async function updateProduct(
+  id: string,
+  payload: UpdateProductPayload
+): Promise<UpdateProductResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  if (!token) {
+    throw new Error("No hay token. Iniciá sesión como administrador.");
+  }
+
+  // ✅ Limpieza: sacamos undefined/null, strings vacíos, arrays vacíos
+  const clean: any = {};
+  Object.entries(payload as Record<string, any>).forEach(([k, v]) => {
+    if (v === undefined || v === null) return;
+    if (typeof v === "string" && v.trim() === "") return;
+    if (Array.isArray(v) && v.length === 0) return;
+
+    // si no es picante y mandan spicyLevel, lo evitamos
+    if (k === "spicyLevel" && payload.isSpicy === false) return;
+
+    clean[k] = v;
+  });
+
+  const res = await fetch(`${API_BASE_URL}/products/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "*/*",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(clean),
+  });
+
+  return (await res.json()) as UpdateProductResponse;
+}
+
+
+/* ====== DELETE PRODUCT (DELETE /products/:id) – SOLO ADMIN ====== */
+
+export type DeleteProductResponse = ApiBaseResponse<null>;
+
+export async function deleteProduct(id: string): Promise<DeleteProductResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  if (!token) {
+    throw new Error("No hay token. Iniciá sesión como administrador.");
+  }
+
+  const res = await fetch(`${API_BASE_URL}/products/${id}`, {
+    method: "DELETE",
+    headers: {
+      accept: "*/*",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  // ✅ Puede venir 200 con JSON o 204 sin body → leemos como texto
+  const raw = await res.text();
+
+  if (raw) {
+    try {
+      return JSON.parse(raw) as DeleteProductResponse;
+    } catch {
+      return {
+        success: res.ok,
+        statusCode: res.status,
+        message: raw || "Respuesta no válida del servidor",
+        data: null,
+        timestamp: new Date().toISOString(),
+        executionTime: "",
+      };
+    }
+  }
+
+  // ✅ Sin body
+  return {
+    success: res.ok,
+    statusCode: res.status,
+    message: res.ok
+      ? "Producto eliminado exitosamente"
+      : "No se pudo eliminar el producto",
+    data: null,
+    timestamp: new Date().toISOString(),
+    executionTime: "",
+  };
+}
+
 
 /**
  * Crea un producto del menú.
@@ -2981,4 +3119,113 @@ export async function createCategory(
   });
 
   return (await res.json()) as CreateCategoryResponse;
+}
+
+
+/* ====== UPDATE CATEGORY (PUT /categories/:id) – SOLO ADMIN ====== */
+
+export type UpdateCategoryPayload = Partial<{
+  name: string;
+  description: string;
+  imageUrl: string;          // si se envía, debe ser URL válida
+  sortOrder: number;
+  parentCategoryId: string;  // si se envía, debe ser UUID válido
+  color: string;
+  icon: string;
+  isActive: boolean;
+}>;
+
+export type UpdateCategoryResponse = ApiBaseResponse<Category>;
+
+export async function updateCategory(
+  id: string,
+  payload: UpdateCategoryPayload
+): Promise<UpdateCategoryResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  if (!token) {
+    throw new Error("No hay token. Iniciá sesión como administrador.");
+  }
+
+  // ✅ Limpieza igual que venís haciendo:
+  // - quitamos undefined / null
+  // - quitamos strings vacías
+  // - quitamos arrays vacíos (por si algún día agregás)
+  const clean: any = {};
+  Object.entries(payload as Record<string, any>).forEach(([k, v]) => {
+    if (v === undefined || v === null) return;
+    if (typeof v === "string" && v.trim() === "") return;
+    if (Array.isArray(v) && v.length === 0) return;
+    clean[k] = typeof v === "string" ? v.trim() : v;
+  });
+
+  const res = await fetch(`${API_BASE_URL}/categories/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(clean),
+  });
+
+  return (await res.json()) as UpdateCategoryResponse;
+}
+
+/* ====== DELETE CATEGORY (DELETE /categories/:id) – SOLO ADMIN ====== */
+
+export type DeleteCategoryResponse = ApiBaseResponse<null>;
+
+export async function deleteCategory(id: string): Promise<DeleteCategoryResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  if (!token) {
+    throw new Error("No hay token. Iniciá sesión como administrador.");
+  }
+
+  const res = await fetch(`${API_BASE_URL}/categories/${id}`, {
+    method: "DELETE",
+    headers: {
+      accept: "*/*",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  // ✅ Puede venir 200 con JSON o 204 sin body
+  const raw = await res.text();
+
+  if (raw) {
+    try {
+      return JSON.parse(raw) as DeleteCategoryResponse;
+    } catch {
+      return {
+        success: res.ok,
+        statusCode: res.status,
+        message: raw || "Respuesta no válida del servidor",
+        data: null,
+        timestamp: new Date().toISOString(),
+        executionTime: "",
+      };
+    }
+  }
+
+  // ✅ Sin body
+  return {
+    success: res.ok,
+    statusCode: res.status,
+    message: res.ok
+      ? "Categoría eliminada exitosamente"
+      : "No se pudo eliminar la categoría",
+    data: null,
+    timestamp: new Date().toISOString(),
+    executionTime: "",
+  };
 }
