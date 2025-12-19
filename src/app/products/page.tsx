@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getProducts,
   type Product,
@@ -8,31 +8,27 @@ import {
   type CreateProductPayload,
   updateProduct,
   type UpdateProductPayload,
-  deleteProduct, // ✅ NUEVO
+  deleteProduct,
+  getCategories,
+  type Category,
 } from "../lib/api";
 
 type UserRole = "admin" | "employee" | "customer" | string | null;
-
-// ✅ Lista de categorías (editá/expandí acá)
-const CATEGORY_OPTIONS: Array<{ id: string; label: string }> = [
-  { id: "", label: "Seleccionar categoría..." },
-  { id: "42088847-c2a6-401f-854c-1e1a336626c5", label: "Pizzas" },
-  { id: "11111111-1111-1111-1111-111111111111", label: "Burgers" },
-  { id: "22222222-2222-2222-2222-222222222222", label: "Bebidas" },
-  { id: "33333333-3333-3333-3333-333333333333", label: "Postres" },
-];
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // ✅ categorías backend
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+
   const [availableFilter, setAvailableFilter] = useState<"" | "true" | "false">(
     "true"
   );
 
-  // ✅ ANTES: "pizzas" (eso te filtraba siempre y por eso veías 1 solo)
-  // ✅ AHORA: "" (no manda category y trae todos)
+  // ✅ filtro por categoría (ahora es UUID)
   const [categoryFilter, setCategoryFilter] = useState("");
 
   // 👑 ROLE (para mostrar el form SOLO a admin)
@@ -59,6 +55,29 @@ export default function ProductsPage() {
 
   const isAdmin = role === "admin";
 
+  const fetchCategories = async () => {
+    setCategoriesLoading(true);
+    try {
+      const res = await getCategories();
+      const list = Array.isArray(res.data) ? res.data : [];
+
+      if (!res.success) {
+        setCategories([]);
+        return;
+      }
+
+      const ordered = [...list]
+        .filter((c) => c.isActive !== false)
+        .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+
+      setCategories(ordered);
+    } catch {
+      setCategories([]);
+    } finally {
+      setCategoriesLoading(false);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -72,7 +91,7 @@ export default function ProductsPage() {
             ? true
             : false,
 
-        // ✅ Solo mandamos category si hay algo seleccionado (UUID o lo que sea que espere tu backend)
+        // ✅ Solo mandamos category si hay algo seleccionado
         category: categoryFilter || undefined,
       });
 
@@ -88,11 +107,26 @@ export default function ProductsPage() {
     }
   };
 
-  // ✅ Si en algún momento cambiás filtros, refresca solo
+  // ✅ cargar categorías una vez
+  useEffect(() => {
+    fetchCategories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ✅ refrescar productos cuando cambian filtros
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availableFilter, categoryFilter]);
+
+  const categoryLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    categories.forEach((c) => {
+      const label = `${c.icon ? `${c.icon} ` : ""}${c.name}`;
+      map.set(c.id, label);
+    });
+    return map;
+  }, [categories]);
 
   /* ============================
      FORM CREAR PRODUCTO (ADMIN)
@@ -106,7 +140,7 @@ export default function ProductsPage() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [costPrice, setCostPrice] = useState("");
-  const [categoryId, setCategoryId] = useState(""); // ✅ ahora select
+  const [categoryId, setCategoryId] = useState(""); // ✅ ahora backend
   const [code, setCode] = useState(""); // ✅ Swagger requiere code
   const [sku, setSku] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -201,7 +235,7 @@ export default function ProductsPage() {
       setFat("");
       setFiber("");
       setSodium("");
-      setCategoryId(""); // ✅ reset select
+      setCategoryId("");
     } catch (err: any) {
       setCreateError(
         err?.message ||
@@ -213,7 +247,7 @@ export default function ProductsPage() {
   };
 
   /* ============================
-     EDITAR PRODUCTO (ADMIN) - PUT /products/:id
+     EDITAR PRODUCTO (ADMIN)
      ============================ */
 
   const [editingOpen, setEditingOpen] = useState(false);
@@ -256,9 +290,16 @@ export default function ProductsPage() {
         ? String((p as any).costPrice)
         : ""
     );
-    setEditCategoryId(p.categoryId ?? "");
-    setEditStatus(p.status ?? "available");
-    setEditIsAvailable(Boolean(p.isAvailable));
+    setEditCategoryId((p as any)?.categoryId ?? "");
+    setEditStatus((p as any)?.status ?? "available");
+
+    // ✅ si viene undefined, lo tratamos como true para no “apagarlo” sin querer
+    const avail =
+      (p as any)?.isAvailable === undefined || (p as any)?.isAvailable === null
+        ? true
+        : Boolean((p as any)?.isAvailable);
+    setEditIsAvailable(avail);
+
     setEditPreparationTime(
       (p as any)?.preparationTime !== undefined && (p as any)?.preparationTime !== null
         ? String((p as any).preparationTime)
@@ -369,7 +410,7 @@ export default function ProductsPage() {
   };
 
   /* ============================
-     ELIMINAR PRODUCTO (ADMIN) - DELETE /products/:id
+     ELIMINAR PRODUCTO (ADMIN)
      ============================ */
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -448,6 +489,96 @@ export default function ProductsPage() {
         </p>
       )}
 
+      {/* ✅ FILTROS (opcional pero útil) */}
+      <section
+        style={{
+          marginBottom: "1rem",
+          padding: "0.9rem",
+          borderRadius: "0.9rem",
+          background: "#0b1220",
+          border: "1px solid #334155",
+          display: "grid",
+          gap: "0.75rem",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+            Disponibilidad
+          </label>
+          <select
+            value={availableFilter}
+            onChange={(e) =>
+              setAvailableFilter(e.target.value as "" | "true" | "false")
+            }
+            style={{
+              padding: "0.5rem 0.75rem",
+              borderRadius: "0.6rem",
+              border: "1px solid #374151",
+              background: "#020617",
+              color: "#e5e7eb",
+            }}
+          >
+            <option value="true">Disponibles</option>
+            <option value="false">No disponibles</option>
+            <option value="">Todos</option>
+          </select>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+            Categoría (backend)
+          </label>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            style={{
+              padding: "0.5rem 0.75rem",
+              borderRadius: "0.6rem",
+              border: "1px solid #374151",
+              background: "#020617",
+              color: "#e5e7eb",
+            }}
+          >
+            <option value="">
+              {categoriesLoading ? "Cargando..." : "Todas las categorías"}
+            </option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.icon ? `${c.icon} ` : ""}{c.name}
+              </option>
+            ))}
+          </select>
+          {categoryFilter && (
+            <span style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "0.25rem" }}>
+              UUID: {categoryFilter}
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "flex-end" }}>
+          <button
+            type="button"
+            onClick={() => {
+              fetchCategories();
+              fetchData();
+            }}
+            style={{
+              padding: "0.6rem 1.2rem",
+              borderRadius: "0.7rem",
+              border: "none",
+              background: "#22c55e",
+              color: "#022c22",
+              fontWeight: 800,
+              cursor: "pointer",
+              width: "100%",
+            }}
+          >
+            Recargar
+          </button>
+        </div>
+      </section>
+
       {isAdmin && (
         <section
           style={{
@@ -502,7 +633,6 @@ export default function ProductsPage() {
               gap: "0.75rem",
             }}
           >
-            {/* Nombre */}
             <div style={{ display: "flex", flexDirection: "column" }}>
               <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
                 Nombre *
@@ -521,7 +651,6 @@ export default function ProductsPage() {
               />
             </div>
 
-            {/* Descripción */}
             <div style={{ display: "flex", flexDirection: "column" }}>
               <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
                 Descripción
@@ -540,7 +669,6 @@ export default function ProductsPage() {
               />
             </div>
 
-            {/* Precio */}
             <div style={{ display: "flex", flexDirection: "column" }}>
               <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
                 Precio *
@@ -561,7 +689,6 @@ export default function ProductsPage() {
               />
             </div>
 
-            {/* Code */}
             <div style={{ display: "flex", flexDirection: "column" }}>
               <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
                 Code *
@@ -581,7 +708,6 @@ export default function ProductsPage() {
               />
             </div>
 
-            {/* Costo */}
             <div style={{ display: "flex", flexDirection: "column" }}>
               <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
                 Costo (costPrice)
@@ -602,10 +728,10 @@ export default function ProductsPage() {
               />
             </div>
 
-            {/* ✅ categoryId SELECT */}
+            {/* ✅ categoryId SELECT (backend real) */}
             <div style={{ display: "flex", flexDirection: "column" }}>
               <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
-                Category ID (UUID) *
+                Categoría *
               </label>
 
               <select
@@ -619,27 +745,23 @@ export default function ProductsPage() {
                   color: "#e5e7eb",
                 }}
               >
-                {CATEGORY_OPTIONS.map((c) => (
-                  <option key={c.id || "empty"} value={c.id}>
-                    {c.label}
+                <option value="">
+                  {categoriesLoading ? "Cargando..." : "Seleccionar categoría..."}
+                </option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.icon ? `${c.icon} ` : ""}{c.name}
                   </option>
                 ))}
               </select>
 
               {categoryId && (
-                <span
-                  style={{
-                    fontSize: "0.75rem",
-                    color: "#94a3b8",
-                    marginTop: "0.25rem",
-                  }}
-                >
+                <span style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "0.25rem" }}>
                   UUID: {categoryId}
                 </span>
               )}
             </div>
 
-            {/* SKU */}
             <div style={{ display: "flex", flexDirection: "column" }}>
               <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
                 SKU
@@ -658,13 +780,7 @@ export default function ProductsPage() {
               />
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-end",
-                justifyContent: "flex-start",
-              }}
-            >
+            <div style={{ display: "flex", alignItems: "flex-end" }}>
               <button
                 type="submit"
                 disabled={creating}
@@ -674,8 +790,9 @@ export default function ProductsPage() {
                   border: "none",
                   background: "#22c55e",
                   color: "#022c22",
-                  fontWeight: 600,
+                  fontWeight: 800,
                   cursor: creating ? "default" : "pointer",
+                  width: "100%",
                 }}
               >
                 {creating ? "Creando..." : "Crear producto"}
@@ -745,6 +862,16 @@ export default function ProductsPage() {
                     </span>
                   </header>
 
+                  {/* ✅ muestra categoría (si existe en map) */}
+                  {(p as any)?.categoryId && (
+                    <p style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
+                      Categoría:{" "}
+                      <strong style={{ color: "#e5e7eb" }}>
+                        {categoryLabelById.get((p as any).categoryId) || (p as any).categoryId}
+                      </strong>
+                    </p>
+                  )}
+
                   <p style={{ fontSize: "0.9rem", color: "#cbd5f5" }}>
                     {p.description || ""}
                   </p>
@@ -753,10 +880,10 @@ export default function ProductsPage() {
                     Estado:{" "}
                     <strong
                       style={{
-                        color: p.isAvailable ? "#4ade80" : "#f87171",
+                        color: (p as any).isAvailable ? "#4ade80" : "#f87171",
                       }}
                     >
-                      {p.isAvailable ? "Disponible" : "No disponible"}
+                      {(p as any).isAvailable ? "Disponible" : "No disponible"}
                     </strong>
                   </p>
 
@@ -811,7 +938,6 @@ export default function ProductsPage() {
                         Editar
                       </button>
 
-                      {/* ✅ NUEVO: ELIMINAR */}
                       <button
                         type="button"
                         onClick={() => openDelete(p)}
@@ -1022,6 +1148,7 @@ export default function ProductsPage() {
                 />
               </div>
 
+              {/* ✅ SELECT backend para editar */}
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
                   Categoría *
@@ -1037,9 +1164,12 @@ export default function ProductsPage() {
                     color: "#e5e7eb",
                   }}
                 >
-                  {CATEGORY_OPTIONS.map((c) => (
-                    <option key={c.id || "empty"} value={c.id}>
-                      {c.label}
+                  <option value="">
+                    {categoriesLoading ? "Cargando..." : "Seleccionar categoría..."}
+                  </option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.icon ? `${c.icon} ` : ""}{c.name}
                     </option>
                   ))}
                 </select>
@@ -1241,7 +1371,7 @@ export default function ProductsPage() {
       )}
 
       {/* ============================
-          ✅ MODAL ELIMINAR PRODUCTO
+          MODAL ELIMINAR PRODUCTO
          ============================ */}
       {deleteOpen && deleteTarget && (
         <div

@@ -79,7 +79,9 @@ export default function CategoriesPage() {
     try {
       const res = await getCategories();
 
-      if (!res.success || !res.data) {
+      const list = Array.isArray(res.data) ? res.data : [];
+
+      if (!res.success) {
         setState({
           loading: false,
           error: res.message || "Error al obtener categorías",
@@ -88,7 +90,7 @@ export default function CategoriesPage() {
         return;
       }
 
-      const ordered = [...res.data].sort(
+      const ordered = [...list].sort(
         (a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)
       );
 
@@ -266,7 +268,6 @@ export default function CategoriesPage() {
       const res = await deleteCategory(deletingId);
 
       if (!res.success) {
-        // ⚠️ Si hay productos asociados, el backend suele devolver error acá
         setDeleteError(
           res.message ||
             "No se pudo eliminar la categoría. Puede tener productos asociados."
