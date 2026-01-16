@@ -504,6 +504,10 @@ export type Product = {
   status?: string;
   isAvailable: boolean;
 
+  // ✅ opcionales útiles para el search del backend
+  tags?: string[];
+  ingredients?: string[];
+
   createdAt?: string;
   updatedAt?: string;
   createdBy?: string;
@@ -515,20 +519,28 @@ export type Product = {
 };
 
 export async function getProducts(params?: {
-  available?: boolean;
-  category?: string;
+  available?: boolean; // default backend: true
+  category?: string;   // nombre (case-insensitive) o UUID
+  search?: string;     // nombre/descripcion/codigo/tags/ingredientes
 }): Promise<ApiBaseResponse<Product[]>> {
   const searchParams = new URLSearchParams();
 
   if (typeof params?.available === "boolean") {
     searchParams.set("available", String(params.available));
   }
-  if (params?.category) {
-    searchParams.set("category", params.category);
+
+  if (params?.category && params.category.trim() !== "") {
+    searchParams.set("category", params.category.trim());
+  }
+
+  if (params?.search && params.search.trim() !== "") {
+    searchParams.set("search", params.search.trim());
   }
 
   const qs = searchParams.toString();
-  const url = qs ? `${API_BASE_URL}/products?${qs}` : `${API_BASE_URL}/products`;
+  const url = qs
+    ? `${API_BASE_URL}/products?${qs}`
+    : `${API_BASE_URL}/products`;
 
   const res = await fetch(url, {
     method: "GET",
@@ -1160,6 +1172,61 @@ export async function getOrderById(
   });
 
   return (await res.json()) as ApiBaseResponse<Order>;
+}
+
+
+export type DeleteOrderInnerData = {
+  success: boolean;
+  message: string;
+};
+
+export type DeleteOrderResponse = ApiBaseResponse<DeleteOrderInnerData>;
+
+export async function deleteOrder(orderId: string): Promise<DeleteOrderResponse> {
+  let token: string | null = null;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  if (!token) {
+    throw new Error("No hay token. Iniciá sesión como administrador.");
+  }
+
+  const res = await fetch(`${API_BASE_URL}/orders/${orderId}`, {
+    method: "DELETE",
+    headers: {
+      accept: "*/*",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  // Puede venir JSON o (raro) vacío, por eso lo leemos como texto
+  const raw = await res.text();
+
+  if (raw) {
+    try {
+      return JSON.parse(raw) as DeleteOrderResponse;
+    } catch {
+      return {
+        success: res.ok,
+        statusCode: res.status,
+        message: raw || "Respuesta no válida del servidor",
+        data: { success: res.ok, message: raw || "" },
+        timestamp: new Date().toISOString(),
+        executionTime: "",
+      };
+    }
+  }
+
+  return {
+    success: res.ok,
+    statusCode: res.status,
+    message: res.ok ? "Recurso eliminado exitosamente" : "No se pudo eliminar la orden",
+    data: { success: res.ok, message: res.ok ? "Orden eliminada exitosamente" : "Error eliminando orden" },
+    timestamp: new Date().toISOString(),
+    executionTime: "",
+  };
 }
 
 
@@ -2891,15 +2958,21 @@ export type FinancialSummaryData = {
   count: number;
 };
 
-// ✅ FIX: la API ya devuelve data directo (no "data.data")
 export type GetFinancialSummaryResponse = ApiBaseResponse<FinancialSummaryData>;
 
+/**
+ * 👑 SOLO ADMIN - JWT requerido
+ * GET /financial-movements/summary
+ *
+ * Filtros:
+ *  - startDate: YYYY-MM-DD (opcional)
+ *  - endDate: YYYY-MM-DD (opcional)
+ */
 export async function getFinancialSummary(params?: {
   startDate?: string; // "YYYY-MM-DD"
   endDate?: string;   // "YYYY-MM-DD"
 }): Promise<GetFinancialSummaryResponse> {
   const searchParams = new URLSearchParams();
-
   if (params?.startDate) searchParams.set("startDate", params.startDate);
   if (params?.endDate) searchParams.set("endDate", params.endDate);
 
@@ -2916,7 +2989,7 @@ export async function getFinancialSummary(params?: {
   const res = await fetch(url, {
     method: "GET",
     headers: {
-      accept: "*/*",
+      accept: "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
@@ -3229,3 +3302,4 @@ export async function deleteCategory(id: string): Promise<DeleteCategoryResponse
     executionTime: "",
   };
 }
+

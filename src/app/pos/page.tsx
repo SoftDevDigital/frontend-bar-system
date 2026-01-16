@@ -19,6 +19,7 @@ import {
   type CreateDirectSalePayload,
   getBillTicket,
   type BillTicket,
+  deleteOrder, // ✅ AGREGAR
 } from "../lib/api";
 
 type UserRole = "admin" | "employee" | "customer" | string | null;
@@ -135,6 +136,9 @@ export default function POSPage() {
 
   const isStaff = role === "admin" || role === "employee";
 
+  // ✅ SEARCH (AGREGADO)
+  const [search, setSearch] = useState("");
+
   // Modo: "quick" (venta rápida/directa) o "table" (mesa)
   const [mode, setMode] = useState<"quick" | "table">("quick");
   const [selectedTableId, setSelectedTableId] = useState<string>("");
@@ -191,7 +195,7 @@ export default function POSPage() {
     return Number(total) || 0;
   };
 
-  // Cargar datos
+  // Cargar datos (inicial)
   useEffect(() => {
     async function fetchData() {
       try {
@@ -207,6 +211,30 @@ export default function POSPage() {
     }
     fetchData();
   }, []);
+
+  // ✅ Buscar productos con debounce (AGREGADO)
+  useEffect(() => {
+    let alive = true;
+
+    const t = setTimeout(async () => {
+      try {
+        const res = await getProducts({
+          available: true,
+          search: search.trim() ? search.trim() : undefined,
+        });
+
+        if (!alive) return;
+        if (res.success && res.data) setProducts(res.data);
+      } catch (err) {
+        console.error("Error buscando productos:", err);
+      }
+    }, 300);
+
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [search]);
 
   // ============================
   // ✅ Cargar órdenes activas para mesas SIN parpadeo
@@ -520,6 +548,53 @@ export default function POSPage() {
     }
   };
 
+    // 🗑️ Eliminar orden (SOLO ADMIN) — OPERACIÓN DESTRUCTIVA
+  const handleDeleteOrder = async () => {
+    if (role !== "admin") {
+      setError("Solo un administrador puede eliminar órdenes.");
+      return;
+    }
+
+    if (!selectedOrderId) {
+      setError("Seleccioná una orden para eliminar.");
+      return;
+    }
+
+    const ok = window.confirm(
+      "⚠️ OPERACIÓN DESTRUCTIVA\n\n¿Seguro que querés eliminar esta orden?\n\n- No se puede eliminar si tiene factura asociada.\n- Si era dine_in, la mesa se libera automáticamente."
+    );
+
+    if (!ok) return;
+
+    setProcessing(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const res = await deleteOrder(selectedOrderId);
+
+      if (res.success) {
+        setSuccess(res.data?.message || res.message || "✅ Orden eliminada exitosamente");
+
+        // Reset UI
+        setSelectedOrderId(null);
+        setPaidAmount("");
+        clearCart();
+
+        // Refrescar órdenes
+        const ordersRes = await getOrders({ status: "pending", limit: 100 });
+        if (ordersRes.success && ordersRes.data) setOrders(ordersRes.data);
+      } else {
+        setError(res.message || "No se pudo eliminar la orden");
+      }
+    } catch (err: any) {
+      setError(err?.message || "Error inesperado eliminando la orden");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+
   // Reset cuando cambia el modo
   useEffect(() => {
     clearCart();
@@ -622,6 +697,25 @@ export default function POSPage() {
           }}
         >
           <h2 style={{ fontSize: "1.25rem", marginBottom: "1rem", fontWeight: 600 }}>Productos</h2>
+
+          {/* ✅ SEARCH INPUT (AGREGADO) */}
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar producto..."
+            style={{
+              width: "100%",
+              padding: "0.75rem",
+              borderRadius: "0.5rem",
+              border: "1px solid #475569",
+              background: "#020617",
+              color: "white",
+              fontSize: "0.95rem",
+              marginBottom: "1rem",
+              outline: "none",
+            }}
+          />
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "1rem" }}>
             {products.map((product) => (
               <button
@@ -1020,8 +1114,34 @@ export default function POSPage() {
                       </button>
                     </div>
 
+                                      {/* 🗑️ ELIMINAR ORDEN (SOLO ADMIN) */}
+                  {role === "admin" && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteOrder}
+                      disabled={processing}
+                      style={{
+                        width: "100%",
+                        padding: "0.75rem",
+                        borderRadius: "0.5rem",
+                        border: "1px solid #ef4444",
+                        background: "transparent",
+                        color: "#fecaca",
+                        fontSize: "0.95rem",
+                        fontWeight: 700,
+                        cursor: processing ? "not-allowed" : "pointer",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      {processing ? "⏳ Eliminando..." : "🗑 Eliminar Orden"}
+                    </button>
+                  )}
+
+
                     <p style={{ margin: 0, fontSize: "0.85rem", color: "#9ca3af" }}>
-                      {selectedOrder ? `${getTableLabelFromOrder(selectedOrder)} • Total: $${orderTotal.toFixed(2)}` : `Total: $${orderTotal.toFixed(2)}`}
+                      {selectedOrder
+                        ? `${getTableLabelFromOrder(selectedOrder)} • Total: $${orderTotal.toFixed(2)}`
+                        : `Total: $${orderTotal.toFixed(2)}`}
                     </p>
                   </div>
 
