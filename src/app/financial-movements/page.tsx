@@ -11,6 +11,10 @@ import {
   type FinancialSummaryData,
 } from "../lib/api";
 
+type FinancialSummaryView = FinancialSummaryData & {
+  consumptionTypeFilter?: string;
+};
+
 type State = {
   loading: boolean;
   error: string | null;
@@ -20,7 +24,7 @@ type State = {
 function formatMoney(n: number) {
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
-    currency: "USD",
+    currency: "ARS",
     maximumFractionDigits: 2,
   }).format(n);
 }
@@ -39,7 +43,6 @@ function isValidYMD(v: string) {
 }
 
 export default function FinancialMovementsPage() {
-  // ✅ Solo admin (lo leemos como guardás vos: localStorage "festgo_user")
   const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,17 +64,14 @@ export default function FinancialMovementsPage() {
     data: null,
   });
 
-  // ✅ ahora se eligen con calendario (YYYY-MM-DD)
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [type, setType] = useState<string>("");
 
-  // ✅ Summary
-  const [summary, setSummary] = useState<FinancialSummaryData | null>(null);
+  const [summary, setSummary] = useState<FinancialSummaryView | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
-  // ✅ Form create movement
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
@@ -107,6 +107,19 @@ export default function FinancialMovementsPage() {
     { value: "sale", label: "sale — (normalmente automático por facturas)" },
   ];
 
+  const validateDateRange = () => {
+    if (startDate && !isValidYMD(startDate)) {
+      return "startDate inválida.";
+    }
+    if (endDate && !isValidYMD(endDate)) {
+      return "endDate inválida.";
+    }
+    if (startDate && endDate && startDate > endDate) {
+      return "La fecha 'Desde' no puede ser mayor que la fecha 'Hasta'.";
+    }
+    return null;
+  };
+
   const fetchSummary = async () => {
     if (!isAdmin) {
       setSummary(null);
@@ -114,13 +127,9 @@ export default function FinancialMovementsPage() {
       return;
     }
 
-    // (type=date ya devuelve YYYY-MM-DD, igual mantenemos validación)
-    if (startDate && !isValidYMD(startDate)) {
-      setSummaryError("startDate inválida.");
-      return;
-    }
-    if (endDate && !isValidYMD(endDate)) {
-      setSummaryError("endDate inválida.");
+    const validationError = validateDateRange();
+    if (validationError) {
+      setSummaryError(validationError);
       return;
     }
 
@@ -139,7 +148,7 @@ export default function FinancialMovementsPage() {
         return;
       }
 
-      setSummary(res.data ?? null);
+      setSummary((res.data as FinancialSummaryView) ?? null);
     } catch (err: any) {
       setSummary(null);
       setSummaryError(err?.message || "Error de red obteniendo resumen.");
@@ -158,12 +167,9 @@ export default function FinancialMovementsPage() {
       return;
     }
 
-    if (startDate && !isValidYMD(startDate)) {
-      setState({ loading: false, error: "startDate inválida.", data: null });
-      return;
-    }
-    if (endDate && !isValidYMD(endDate)) {
-      setState({ loading: false, error: "endDate inválida.", data: null });
+    const validationError = validateDateRange();
+    if (validationError) {
+      setState({ loading: false, error: validationError, data: null });
       return;
     }
 
@@ -185,10 +191,16 @@ export default function FinancialMovementsPage() {
         return;
       }
 
+      const ordered = [...(res.data ?? [])].sort((a, b) => {
+        const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return db - da;
+      });
+
       setState({
         loading: false,
         error: null,
-        data: res.data ?? [],
+        data: ordered,
       });
     } catch (err: any) {
       setState({
@@ -202,6 +214,16 @@ export default function FinancialMovementsPage() {
   const onSubmitCreate = async () => {
     if (!isAdmin) {
       setCreateError("Solo Admin puede registrar movimientos.");
+      return;
+    }
+
+    if (!form.type) {
+      setCreateError("El tipo es obligatorio.");
+      return;
+    }
+
+    if (!form.amount || Number(form.amount) <= 0) {
+      setCreateError("El monto debe ser mayor a 0.");
       return;
     }
 
@@ -236,7 +258,6 @@ export default function FinancialMovementsPage() {
         tags: [],
       }));
 
-      // refrescar ambos
       fetchData();
       fetchSummary();
     } catch (err: any) {
@@ -277,7 +298,6 @@ export default function FinancialMovementsPage() {
         Resumen financiero & Movimientos 💳
       </h1>
 
-      {/* Bloque de permisos */}
       {!isAdmin && role && (
         <div
           style={{
@@ -293,7 +313,6 @@ export default function FinancialMovementsPage() {
         </div>
       )}
 
-      {/* Filtros */}
       <section
         style={{
           display: "flex",
@@ -394,7 +413,6 @@ export default function FinancialMovementsPage() {
         </button>
       </section>
 
-      {/* SUMMARY */}
       <section
         style={{
           background: "#0f172a",
@@ -458,6 +476,13 @@ export default function FinancialMovementsPage() {
                 <div style={{ color: "#94a3b8", fontSize: "0.85rem" }}>Movimientos</div>
                 <div style={{ fontSize: "1.4rem", fontWeight: 900 }}>{summary.count}</div>
               </div>
+
+              <div style={{ background: "#0b1220", border: "1px solid #1f2937", borderRadius: "0.8rem", padding: "0.9rem" }}>
+                <div style={{ color: "#94a3b8", fontSize: "0.85rem" }}>Filtro consumo</div>
+                <div style={{ fontSize: "1.1rem", fontWeight: 900 }}>
+                  {summary.consumptionTypeFilter || "all"}
+                </div>
+              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "1rem" }}>
@@ -495,7 +520,6 @@ export default function FinancialMovementsPage() {
         )}
       </section>
 
-      {/* Registrar movimiento */}
       <section
         style={{
           background: "#0f172a",
@@ -613,7 +637,6 @@ export default function FinancialMovementsPage() {
         </div>
       </section>
 
-      {/* Movimientos */}
       {state.loading && <p style={{ color: "#94a3b8" }}>Cargando movimientos...</p>}
 
       {state.error && !state.loading && (

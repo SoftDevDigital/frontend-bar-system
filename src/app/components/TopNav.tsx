@@ -100,18 +100,11 @@ export default function TopNav() {
             <>
               <NavLink href="/dashboard" label="Dashboard" />
               <NavLink href="/pos" label="💳 FACTURACIÓN" />
-              <NavLink href="/inventory" label="Inventario" />
               <NavLink href="/products" label="Productos" />
-
-              {/* ✅ NUEVO */}
               <NavLink href="/categories" label="Categorías" />
-
               <NavLink href="/orders" label="Pedidos" />
               <NavLink href="/reservations" label="Reservas" />
               <NavLink href="/stock-movements" label="Movimientos" />
-              <NavLink href="/bills" label="Bills" />
-              <NavLink href="/customers" label="Clientes" />
-              <NavLink href="/suppliers" label="Proveedores" />
               <NavLink href="/tables" label="Mesas" />
               <NavLink href="/waitlist" label="Waitlist" />
 
@@ -125,6 +118,12 @@ export default function TopNav() {
                   <NavLink
                     href="/financial-movements"
                     label="Movimientos financieros"
+                  />
+
+                  {/* ✅ NUEVO REPORTES */}
+                  <NavLink
+                    href="/reports/sales"
+                    label="📊 Reporte de ventas"
                   />
                 </>
               )}

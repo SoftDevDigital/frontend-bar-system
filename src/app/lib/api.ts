@@ -2956,6 +2956,7 @@ export type FinancialSummaryData = {
   byType: Record<string, number>;
   byCategory: Record<string, number>;
   count: number;
+  consumptionTypeFilter?: string;
 };
 
 export type GetFinancialSummaryResponse = ApiBaseResponse<FinancialSummaryData>;
@@ -3121,20 +3122,24 @@ export async function createFinancialMovement(
 }
 
 
+export type ConsumptionType = "food" | "drink";
+
 export type Category = {
   id: string;
   name: string;
   description?: string | null;
+  imageUrl?: string | null;
   icon?: string | null;
   color?: string | null;
   sortOrder?: number | null;
+  parentCategoryId?: string | null;
   isActive?: boolean;
+  consumptionType?: ConsumptionType | null;
   createdAt?: string;
   updatedAt?: string;
+  createdBy?: string;
+  updatedBy?: string;
 };
-
-
-
 
 export async function getCategories(): Promise<ApiBaseResponse<Category[]>> {
   const res = await fetch(`${API_BASE_URL}/categories`, {
@@ -3151,11 +3156,12 @@ export async function getCategories(): Promise<ApiBaseResponse<Category[]>> {
 export type CreateCategoryPayload = {
   name: string;
   description?: string;
-  imageUrl?: string;          // debe ser URL válida si se envía
+  imageUrl?: string; // debe ser URL válida si se envía
   sortOrder?: number;
-  parentCategoryId?: string;  // UUID si se envía
+  parentCategoryId?: string; // UUID si se envía
   color?: string;
   icon?: string;
+  consumptionType?: ConsumptionType;
 };
 
 export type CreateCategoryResponse = ApiBaseResponse<Category>;
@@ -3178,7 +3184,7 @@ export async function createCategory(
   Object.entries(payload).forEach(([k, v]) => {
     if (v === undefined || v === null) return;
     if (typeof v === "string" && v.trim() === "") return;
-    clean[k] = v;
+    clean[k] = typeof v === "string" ? v.trim() : v;
   });
 
   const res = await fetch(`${API_BASE_URL}/categories`, {
@@ -3194,17 +3200,17 @@ export async function createCategory(
   return (await res.json()) as CreateCategoryResponse;
 }
 
-
 /* ====== UPDATE CATEGORY (PUT /categories/:id) – SOLO ADMIN ====== */
 
 export type UpdateCategoryPayload = Partial<{
   name: string;
   description: string;
-  imageUrl: string;          // si se envía, debe ser URL válida
+  imageUrl: string; // si se envía, debe ser URL válida
   sortOrder: number;
-  parentCategoryId: string;  // si se envía, debe ser UUID válido
+  parentCategoryId: string; // si se envía, debe ser UUID válido
   color: string;
   icon: string;
+  consumptionType: ConsumptionType;
   isActive: boolean;
 }>;
 
@@ -3253,7 +3259,9 @@ export async function updateCategory(
 
 export type DeleteCategoryResponse = ApiBaseResponse<null>;
 
-export async function deleteCategory(id: string): Promise<DeleteCategoryResponse> {
+export async function deleteCategory(
+  id: string
+): Promise<DeleteCategoryResponse> {
   let token: string | null = null;
 
   if (typeof window !== "undefined") {
@@ -3303,3 +3311,132 @@ export async function deleteCategory(id: string): Promise<DeleteCategoryResponse
   };
 }
 
+
+/* ========== REPORTS / SALES (SOLO ADMIN) ========== */
+
+export type SalesReportPeriod = {
+  startDate: string;
+  endDate: string;
+  groupBy: string;
+};
+
+export type SalesByConsumptionType = {
+  food: number;
+  drink: number;
+  other: number;
+  total: number;
+};
+
+export type SalesReportSales = {
+  totalSales: number;
+  totalTax: number;
+  totalDiscounts: number;
+  totalTips: number;
+  netSales: number;
+  numberOfBills: number;
+  averageBill: number;
+};
+
+export type SalesReportFinancial = {
+  totalIncome: number;
+  totalExpenses: number;
+  netIncome: number;
+  movementsByType: Record<string, number>;
+  movementsByCategory: Record<string, number>;
+  totalMovements: number;
+};
+
+export type SalesReportPaymentMethodItem = {
+  paymentMethod: string;
+  amount: number;
+  count?: number;
+  percentage?: number;
+};
+
+export type SalesReportTopProductItem = {
+  productId?: string;
+  productName?: string;
+  name?: string;
+  quantitySold?: number;
+  totalSold?: number;
+  totalRevenue?: number;
+  amount?: number;
+};
+
+export type SalesReportBillItem = {
+  id?: string;
+  billId?: string;
+  billNumber?: string;
+  orderId?: string;
+  paymentMethod?: string;
+  subtotal?: number;
+  tax?: number;
+  tip?: number;
+  total?: number;
+  totalAmount?: number;
+  discountAmount?: number;
+  createdAt?: string;
+  status?: string;
+  tableNumber?: number;
+};
+
+export type SalesReportData = {
+  period: SalesReportPeriod;
+  consumptionTypeFilter?: string;
+  salesByConsumptionType: SalesByConsumptionType;
+  sales: SalesReportSales;
+  financial: SalesReportFinancial;
+  byPaymentMethod: SalesReportPaymentMethodItem[];
+  topProducts: SalesReportTopProductItem[];
+  bills: SalesReportBillItem[];
+};
+
+export type GetSalesReportResponse = ApiBaseResponse<SalesReportData>;
+
+/**
+ * Reporte de ventas
+ * GET /reports/sales
+ *
+ * Query params:
+ * - startDate?: YYYY-MM-DD
+ * - endDate?: YYYY-MM-DD
+ * - groupBy?: string
+ * - consumptionType?: "food" | "drink" | "all"
+ *
+ * Requiere autenticación admin.
+ */
+export async function getSalesReport(params?: {
+  startDate?: string;
+  endDate?: string;
+  groupBy?: string;
+  consumptionType?: "food" | "drink" | "all" | string;
+}): Promise<GetSalesReportResponse> {
+  const searchParams = new URLSearchParams();
+
+  if (params?.startDate) searchParams.set("startDate", params.startDate);
+  if (params?.endDate) searchParams.set("endDate", params.endDate);
+  if (params?.groupBy) searchParams.set("groupBy", params.groupBy);
+  if (params?.consumptionType) {
+    searchParams.set("consumptionType", params.consumptionType);
+  }
+
+  const qs = searchParams.toString();
+  const url = qs
+    ? `${API_BASE_URL}/reports/sales?${qs}`
+    : `${API_BASE_URL}/reports/sales`;
+
+  let token: string | null = null;
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("festgo_token");
+  }
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  return (await res.json()) as GetSalesReportResponse;
+}

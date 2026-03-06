@@ -7,10 +7,11 @@ import {
   CreateCategoryPayload,
   getCategories,
   updateCategory,
-  deleteCategory, // ✅ NUEVO
+  deleteCategory,
 } from "../lib/api";
 
 type UserRole = "admin" | "employee" | "customer" | string | null;
+type ConsumptionType = "food" | "drink" | "";
 
 type State = {
   loading: boolean;
@@ -41,15 +42,26 @@ export default function CategoriesPage() {
   const [color, setColor] = useState("#334155");
   const [icon, setIcon] = useState("🍽️");
   const [parentCategoryId, setParentCategoryId] = useState("");
+  const [consumptionType, setConsumptionType] = useState<ConsumptionType>("");
 
-  // ✅ EDIT (UPDATE)
+  // EDIT
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editImageUrl, setEditImageUrl] = useState("");
+  const [editSortOrder, setEditSortOrder] = useState("1");
+  const [editColor, setEditColor] = useState("#334155");
+  const [editIcon, setEditIcon] = useState("🍽️");
+  const [editParentCategoryId, setEditParentCategoryId] = useState("");
+  const [editConsumptionType, setEditConsumptionType] =
+    useState<ConsumptionType>("");
+  const [editIsActive, setEditIsActive] = useState(true);
+
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
 
-  // ✅ DELETE
+  // DELETE
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletingName, setDeletingName] = useState<string>("");
   const [deleting, setDeleting] = useState(false);
@@ -145,6 +157,7 @@ export default function CategoriesPage() {
       parentCategoryId: parentCategoryId.trim()
         ? parentCategoryId.trim()
         : undefined,
+      consumptionType: consumptionType || undefined,
     };
 
     try {
@@ -167,6 +180,7 @@ export default function CategoriesPage() {
       setColor("#334155");
       setIcon("🍽️");
       setParentCategoryId("");
+      setConsumptionType("");
     } catch (err: any) {
       setCreateError(
         err?.message ||
@@ -177,16 +191,31 @@ export default function CategoriesPage() {
     }
   };
 
-  // ✅ Abrir edición
   const openEdit = (c: Category) => {
     if (!isAdmin) return;
+
     setUpdateError(null);
     setUpdateSuccess(null);
     setEditingId(c.id);
     setEditName(c.name || "");
+    setEditDescription(c.description || "");
+    setEditImageUrl(c.imageUrl || "");
+    setEditSortOrder(
+      c.sortOrder !== undefined && c.sortOrder !== null
+        ? String(c.sortOrder)
+        : "1"
+    );
+    setEditColor(c.color || "#334155");
+    setEditIcon(c.icon || "🍽️");
+    setEditParentCategoryId(c.parentCategoryId || "");
+    setEditConsumptionType(
+      c.consumptionType === "food" || c.consumptionType === "drink"
+        ? c.consumptionType
+        : ""
+    );
+    setEditIsActive(c.isActive !== false);
   };
 
-  // ✅ Guardar edición (PUT /categories/:id) — mandamos SOLO name
   const handleUpdateCategory = async () => {
     setUpdateError(null);
     setUpdateSuccess(null);
@@ -207,7 +236,19 @@ export default function CategoriesPage() {
     try {
       setUpdating(true);
 
-      const res = await updateCategory(editingId, { name: cleanName });
+      const res = await updateCategory(editingId, {
+        name: cleanName,
+        description: editDescription.trim() ? editDescription.trim() : undefined,
+        imageUrl: editImageUrl.trim() ? editImageUrl.trim() : undefined,
+        sortOrder: editSortOrder.trim() ? Number(editSortOrder) : undefined,
+        parentCategoryId: editParentCategoryId.trim()
+          ? editParentCategoryId.trim()
+          : undefined,
+        color: editColor.trim() ? editColor.trim() : undefined,
+        icon: editIcon.trim() ? editIcon.trim() : undefined,
+        consumptionType: editConsumptionType || undefined,
+        isActive: editIsActive,
+      });
 
       if (!res.success || !res.data) {
         setUpdateError(res.message || "No se pudo actualizar la categoría.");
@@ -230,11 +271,18 @@ export default function CategoriesPage() {
   const cancelEdit = () => {
     setEditingId(null);
     setEditName("");
+    setEditDescription("");
+    setEditImageUrl("");
+    setEditSortOrder("1");
+    setEditColor("#334155");
+    setEditIcon("🍽️");
+    setEditParentCategoryId("");
+    setEditConsumptionType("");
+    setEditIsActive(true);
     setUpdateError(null);
     setUpdateSuccess(null);
   };
 
-  // ✅ Abrir modal eliminar
   const openDelete = (c: Category) => {
     if (!isAdmin) return;
     setDeleteError(null);
@@ -250,7 +298,6 @@ export default function CategoriesPage() {
     setDeleteSuccess(null);
   };
 
-  // ✅ Confirmar eliminar (DELETE /categories/:id)
   const handleDeleteCategory = async () => {
     setDeleteError(null);
     setDeleteSuccess(null);
@@ -288,6 +335,36 @@ export default function CategoriesPage() {
     }
   };
 
+  const getConsumptionTypeLabel = (value?: string) => {
+    if (value === "food") return "Comida";
+    if (value === "drink") return "Bebida";
+    return "Sin definir";
+  };
+
+  const getConsumptionTypeStyles = (value?: string): React.CSSProperties => {
+    if (value === "food") {
+      return {
+        background: "rgba(34, 197, 94, 0.15)",
+        color: "#86efac",
+        border: "1px solid rgba(34, 197, 94, 0.35)",
+      };
+    }
+
+    if (value === "drink") {
+      return {
+        background: "rgba(59, 130, 246, 0.15)",
+        color: "#93c5fd",
+        border: "1px solid rgba(59, 130, 246, 0.35)",
+      };
+    }
+
+    return {
+      background: "rgba(148, 163, 184, 0.15)",
+      color: "#cbd5e1",
+      border: "1px solid rgba(148, 163, 184, 0.35)",
+    };
+  };
+
   return (
     <>
       <main
@@ -318,7 +395,6 @@ export default function CategoriesPage() {
           </p>
         </header>
 
-        {/* FORM ADMIN CREATE */}
         {isAdmin && (
           <section
             style={{
@@ -435,6 +511,22 @@ export default function CategoriesPage() {
                 />
               </Field>
 
+              <Field label="Tipo de consumo">
+                <select
+                  value={consumptionType}
+                  onChange={(e) =>
+                    setConsumptionType(
+                      e.target.value as "food" | "drink" | ""
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="">Sin definir</option>
+                  <option value="food">Comida</option>
+                  <option value="drink">Bebida</option>
+                </select>
+              </Field>
+
               <div style={{ display: "flex", alignItems: "flex-end" }}>
                 <button
                   type="submit"
@@ -457,7 +549,6 @@ export default function CategoriesPage() {
           </section>
         )}
 
-        {/* ✅ EDIT */}
         {isAdmin && editingId && (
           <section
             style={{
@@ -529,11 +620,90 @@ export default function CategoriesPage() {
                 />
               </Field>
 
+              <Field label="Descripción">
+                <input
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Image URL">
+                <input
+                  type="url"
+                  value={editImageUrl}
+                  onChange={(e) => setEditImageUrl(e.target.value)}
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Sort Order">
+                <input
+                  type="number"
+                  min={1}
+                  value={editSortOrder}
+                  onChange={(e) => setEditSortOrder(e.target.value)}
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Color">
+                <input
+                  value={editColor}
+                  onChange={(e) => setEditColor(e.target.value)}
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Icono">
+                <input
+                  value={editIcon}
+                  onChange={(e) => setEditIcon(e.target.value)}
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Parent Category ID">
+                <input
+                  value={editParentCategoryId}
+                  onChange={(e) => setEditParentCategoryId(e.target.value)}
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Tipo de consumo">
+                <select
+                  value={editConsumptionType}
+                  onChange={(e) =>
+                    setEditConsumptionType(
+                      e.target.value as "food" | "drink" | ""
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="">Sin definir</option>
+                  <option value="food">Comida</option>
+                  <option value="drink">Bebida</option>
+                </select>
+              </Field>
+
+              <Field label="Activa">
+                <select
+                  value={editIsActive ? "true" : "false"}
+                  onChange={(e) => setEditIsActive(e.target.value === "true")}
+                  style={inputStyle}
+                >
+                  <option value="true">Sí</option>
+                  <option value="false">No</option>
+                </select>
+              </Field>
+
               <div
                 style={{
                   display: "flex",
                   alignItems: "flex-end",
                   gap: "0.5rem",
+                  gridColumn: "1 / -1",
                 }}
               >
                 <button
@@ -576,7 +746,6 @@ export default function CategoriesPage() {
           </section>
         )}
 
-        {/* ✅ DELETE CONFIRM */}
         {isAdmin && deletingId && (
           <section
             style={{
@@ -591,13 +760,27 @@ export default function CategoriesPage() {
               Eliminar categoría (DELETE /categories/:id)
             </h2>
 
-            <p style={{ fontSize: "0.9rem", color: "#fecaca", marginBottom: "0.75rem" }}>
-              Vas a eliminar <strong>{deletingName || "esta categoría"}</strong> permanentemente.
+            <p
+              style={{
+                fontSize: "0.9rem",
+                color: "#fecaca",
+                marginBottom: "0.75rem",
+              }}
+            >
+              Vas a eliminar <strong>{deletingName || "esta categoría"}</strong>{" "}
+              permanentemente.
               <br />
-              <strong>IMPORTANTE:</strong> si tiene productos asociados, el backend no te va a dejar.
+              <strong>IMPORTANTE:</strong> si tiene productos asociados, el
+              backend no te va a dejar.
             </p>
 
-            <div style={{ fontSize: "0.8rem", color: "#fca5a5", marginBottom: "0.75rem" }}>
+            <div
+              style={{
+                fontSize: "0.8rem",
+                color: "#fca5a5",
+                marginBottom: "0.75rem",
+              }}
+            >
               ID: <span style={{ color: "#fff" }}>{deletingId}</span>
             </div>
 
@@ -673,7 +856,6 @@ export default function CategoriesPage() {
           </section>
         )}
 
-        {/* ACCIONES */}
         <section
           style={{ marginBottom: "1.25rem", display: "flex", gap: "0.75rem" }}
         >
@@ -708,7 +890,6 @@ export default function CategoriesPage() {
           </div>
         </section>
 
-        {/* ERRORES / LISTADO */}
         {state.error && !state.loading && (
           <p
             style={{
@@ -798,6 +979,21 @@ export default function CategoriesPage() {
 
                     <div
                       style={{
+                        marginTop: "0.75rem",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "0.35rem 0.65rem",
+                        borderRadius: "999px",
+                        fontSize: "0.75rem",
+                        fontWeight: 800,
+                        ...getConsumptionTypeStyles(c.consumptionType),
+                      }}
+                    >
+                      {getConsumptionTypeLabel(c.consumptionType)}
+                    </div>
+
+                    <div
+                      style={{
                         marginTop: "0.8rem",
                         fontSize: "0.78rem",
                         color: "#94a3b8",
@@ -806,7 +1002,6 @@ export default function CategoriesPage() {
                       ID: <span style={{ color: "#e5e7eb" }}>{c.id}</span>
                     </div>
 
-                    {/* ✅ BOTONES ADMIN */}
                     {isAdmin && (
                       <div
                         style={{
@@ -861,7 +1056,13 @@ export default function CategoriesPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
       <label style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
