@@ -335,13 +335,15 @@ export default function CategoriesPage() {
     }
   };
 
-  const getConsumptionTypeLabel = (value?: string) => {
+  const getConsumptionTypeLabel = (value?: ConsumptionType | null) => {
     if (value === "food") return "Comida";
     if (value === "drink") return "Bebida";
     return "Sin definir";
   };
 
-  const getConsumptionTypeStyles = (value?: string): React.CSSProperties => {
+  const getConsumptionTypeStyles = (
+    value?: ConsumptionType | null
+  ): React.CSSProperties => {
     if (value === "food") {
       return {
         background: "rgba(34, 197, 94, 0.15)",
@@ -986,10 +988,10 @@ export default function CategoriesPage() {
                         borderRadius: "999px",
                         fontSize: "0.75rem",
                         fontWeight: 800,
-                        ...getConsumptionTypeStyles(c.consumptionType),
+                        ...getConsumptionTypeStyles(c.consumptionType ?? null),
                       }}
                     >
-                      {getConsumptionTypeLabel(c.consumptionType)}
+                      {getConsumptionTypeLabel(c.consumptionType ?? null)}
                     </div>
 
                     <div
